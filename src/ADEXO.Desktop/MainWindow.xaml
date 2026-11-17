@@ -1,0 +1,10 @@
+<Window x:Class="ADEXO.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ADEXO"
+        Height="180"
+        Width="360">
+    <Grid>
+        <TextBlock Margin="24" FontSize="28" Text="ADEXO" />
+    </Grid>
+</Window>

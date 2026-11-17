@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  portable-domain-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore and test portable projects
+        run: |
+          dotnet test tests/ADEXO.Contracts.Tests/ADEXO.Contracts.Tests.csproj --configuration Release
+          dotnet test tests/ADEXO.Core.Tests/ADEXO.Core.Tests.csproj --configuration Release
+
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore, build, and test the solution
+        run: dotnet test ADEXO.slnx --configuration Release
