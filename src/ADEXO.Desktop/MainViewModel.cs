@@ -156,7 +156,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Interlocked.Increment(ref _generation);
         State = ReadOnlyViewState.Canceled;
-        Status = "The load was stopped. An in-flight directory request is bounded by its timeout and its result will be discarded.";
+        Status = "The load was stopped. An in-flight directory request is bounded by its timeout and its result will be discarded. The network request itself was not reported as canceled.";
         GuidVerification = "Discarded";
     }
 
