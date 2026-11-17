@@ -18,5 +18,8 @@ Status: open as of Phase 0. Likelihood and impact are design judgments. They are
 | R12 | Forest registration is copied between client environments without a backup. | Medium | High | Scripts refuse to append unless a backup file for that forest exists, or the administrator passes an explicit acknowledgment. |
 | R13 | App-only mode is used as a convenience for interactive admins. | Medium | High | No automatic fallback. App-only stays a separate approved configuration. |
 | R14 | WiX, COM registration, and WPF cannot be proven on this Linux host. | Certain | Medium | Those results wait for the Windows lab. Phase 0 claims no installer or UI success. |
+| R15 | The executable path quoting has not been captured from ADUC. | High | Medium | The ADR separates the documented argument shape from the unverified quoting assumption. |
+| R16 | An ADsPath names an untrusted LDAP host. | Medium | High | The connection uses the discovered domain controller, or the named host only when it matches discovery. |
+| R17 | Unregistration matches every copy of ADEXO.exe. | Medium | Medium | Removal requires the exact recorded value and stops on ambiguity. |
 
 Accepted for v1: R6. The others stay open until the response is implemented and, where the response is a lab check, until that check has a recorded result.

@@ -2,9 +2,61 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ADEXO"
-        Height="180"
-        Width="360">
-    <Grid>
-        <TextBlock Margin="24" FontSize="28" Text="ADEXO" />
-    </Grid>
+        Height="720"
+        Width="880">
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock FontSize="28" Text="ADEXO" />
+            <TextBlock Text="Read-only Active Directory mode" />
+            <TextBlock Margin="0,8,0,0" FontWeight="Bold" Text="{Binding Status}" />
+            <TextBlock Text="{Binding FailureMessage}" TextWrapping="Wrap" />
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,12,0,0">
+            <Button Margin="0,0,8,0" Content="Refresh" Command="{Binding RefreshCommand}" />
+            <Button Margin="0,0,8,0" Content="Cancel" Command="{Binding CancelCommand}" />
+            <Button Margin="0,0,8,0" Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" Click="CopyDefault" />
+            <Button Margin="0,0,8,0" Content="Copy detailed diagnostics (sensitive)" Command="{Binding CopyDetailedDiagnosticsCommand}" Click="CopyDetailed" />
+            <Button Content="Close" Click="CloseClick" />
+        </StackPanel>
+        <ScrollViewer>
+            <StackPanel>
+                <TextBlock FontWeight="Bold" Text="Identity" />
+                <TextBlock Text="{Binding User.DisplayName, StringFormat=Display name: {0}}" />
+                <TextBlock Text="{Binding User.SamAccountName, StringFormat=sAMAccountName: {0}}" />
+                <TextBlock Text="{Binding User.UserPrincipalName, StringFormat=UPN: {0}}" />
+                <TextBlock Text="{Binding User.ObjectGuid, StringFormat=objectGUID: {0}}" />
+                <TextBlock Text="{Binding User.ObjectSid, StringFormat=object SID: {0}}" />
+                <TextBlock Text="{Binding User.DistinguishedName, StringFormat=Distinguished name: {0}}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding User.ObjectClass, StringFormat=Object class: {0}}" />
+                <TextBlock Text="{Binding User.CanonicalName, StringFormat=Canonical name: {0}}" />
+                <TextBlock Margin="0,12,0,0" FontWeight="Bold" Text="Account" />
+                <TextBlock Text="{Binding User.Enabled, StringFormat=Enabled state: {0}}" />
+                <TextBlock Text="{Binding User.ExpirationKind, StringFormat=Account expiration: {0}}" />
+                <TextBlock Text="{Binding User.PasswordLastSetKind, StringFormat=Password last set: {0}}" />
+                <TextBlock Text="{Binding User.Lockout, StringFormat=Lockout indication (this replica only): {0}}" />
+                <TextBlock Text="{Binding User.WhenCreatedUtc, StringFormat=Created: {0}}" />
+                <TextBlock Text="{Binding User.WhenChangedUtc, StringFormat=Changed: {0}}" />
+                <TextBlock Margin="0,12,0,0" FontWeight="Bold" Text="Contact" />
+                <TextBlock Text="{Binding User.Mail, StringFormat=Email: {0}}" />
+                <TextBlock Text="{Binding User.TelephoneNumber, StringFormat=Phone: {0}}" />
+                <TextBlock Text="{Binding User.Mobile, StringFormat=Mobile: {0}}" />
+                <TextBlock Text="{Binding User.Office, StringFormat=Office: {0}}" />
+                <TextBlock Text="{Binding User.StreetAddress, StringFormat=Address: {0}}" />
+                <TextBlock Margin="0,12,0,0" FontWeight="Bold" Text="Organization" />
+                <TextBlock Text="{Binding User.Title, StringFormat=Title: {0}}" />
+                <TextBlock Text="{Binding User.Department, StringFormat=Department: {0}}" />
+                <TextBlock Text="{Binding User.Company, StringFormat=Company: {0}}" />
+                <TextBlock Text="{Binding User.ManagerDisplayName, StringFormat=Manager: {0}}" />
+                <TextBlock Margin="0,12,0,0" FontWeight="Bold" Text="Email attributes" />
+                <TextBlock Text="{Binding User.MailNickname, StringFormat=mailNickname: {0}}" />
+                <TextBlock Text="{Binding User.TargetAddress, StringFormat=targetAddress: {0}}" />
+                <TextBlock Text="{Binding User.HiddenFromAddressLists, StringFormat=Hidden from address lists: {0}}" />
+                <TextBlock Margin="0,12,0,0" FontWeight="Bold" Text="Diagnostics" />
+                <TextBlock Text="{Binding State, StringFormat=State: {0}}" />
+                <TextBlock Text="{Binding GuidVerification, StringFormat=GUID verification: {0}}" />
+                <TextBlock Text="{Binding ProviderStatus, StringFormat=Provider: {0}}" />
+                <TextBlock Text="{Binding Elapsed, StringFormat=Elapsed: {0}}" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

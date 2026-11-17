@@ -28,7 +28,9 @@ Installing the program and publishing the ADUC menu are separate steps.
 
 Those scripts are specified and are not in the tree yet.
 
-Phase 1 foundation implemented. Portable contracts, the operation state machine, and unit tests are in the solution. The desktop project is a WPF shell and does not call a directory or a tenant. GitHub Actions `portable-domain-tests` and `windows-build` both succeeded on commit `3ace5ee`.
+Phase 2 implementation complete; Windows domain lab validation pending.
+
+The read-only path validates an ADUC launch, resolves a user, and shows the user only when a second lookup by objectGUID returns the same GUID. It does not write to the directory and it does not call Microsoft 365. The menu registration scripts are for an approved lab and are not run by the application. ADUC behavior has not been observed in this repository.
 
 ## Architecture
 
@@ -38,6 +40,8 @@ Phase 1 foundation implemented. Portable contracts, the operation state machine,
 - [Change operations](docs/architecture/0004-change-operations.md)
 - [Provider capabilities](docs/architecture/0005-provider-capabilities.md)
 - [Repository structure](docs/architecture/repository-structure.md)
+- [ADUC launch contract](docs/architecture/0007-aduc-launch-contract.md)
+- [Phase 2 lab checklist](docs/testing/phase-2-aduc-validation.md)
 - [Risk register](docs/architecture/risk-register.md)
 - [Threat model](docs/security/threat-model.md)
 
