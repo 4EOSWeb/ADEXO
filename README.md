@@ -26,7 +26,7 @@ Installing the program and publishing the ADUC menu are separate steps.
 - `ADEXO.msi` copies `C:\Program Files\ADEXO\ADEXO.exe` onto a management workstation. It does not change the forest.
 - `Register-ADEXOForest.ps1` appends the menu to the display specifiers, after `Backup-ADEXODisplaySpecifiers.ps1`. `Test-ADEXOForestRegistration.ps1` and `Unregister-ADEXOForest.ps1` check and remove that value.
 
-Those scripts are specified and are not in the tree yet.
+The lab registration scripts are in `scripts/`. They are not run by the application.
 
 Phase 2 implementation complete; Windows domain lab validation pending.
 
@@ -42,6 +42,7 @@ The read-only path validates an ADUC launch, resolves a user, and shows the user
 - [Repository structure](docs/architecture/repository-structure.md)
 - [ADUC launch contract](docs/architecture/0007-aduc-launch-contract.md)
 - [Phase 2 lab checklist](docs/testing/phase-2-aduc-validation.md)
+- [Proposed Phase 3 read-only cloud correlation](docs/architecture/0008-phase-3-readonly-cloud.md)
 - [Risk register](docs/architecture/risk-register.md)
 - [Threat model](docs/security/threat-model.md)
 
