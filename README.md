@@ -28,7 +28,7 @@ Installing the program and publishing the ADUC menu are separate steps.
 
 Those scripts are specified and are not in the tree yet.
 
-Phase 1 foundation implemented. Portable contracts, the operation state machine, and unit tests are in the solution. The desktop project is a WPF shell and does not call a directory or a tenant. Windows CI is pending until the windows-build job is green.
+Phase 1 foundation implemented. Portable contracts, the operation state machine, and unit tests are in the solution. The desktop project is a WPF shell and does not call a directory or a tenant. GitHub Actions `portable-domain-tests` and `windows-build` both succeeded on commit `3ace5ee`.
 
 ## Architecture
 
