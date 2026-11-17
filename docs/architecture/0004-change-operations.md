@@ -67,6 +67,11 @@ The administrator can cancel or apply. Destructive and security-sensitive change
 - Non-idempotent writes are not retried automatically. Graph reads honor `Retry-After` and use bounded backoff with jitter.
 - The UI thread does not wait on LDAP, Graph, Exchange, or PowerShell. Every step takes a `CancellationToken`.
 
-## What Phase 1 implements
+## Phase 1 amendment
 
-Phase 1 adds the interface, the preview and result types, and unit tests for a fake operation that passes, fails validation, and fails verification. It does not perform a directory write.
+The pipeline above still stands. Two consequences changed when the contracts were implemented:
+
+- A succeeded operation stays `Succeeded`. `HasCompensatingOperation` records that an administrator can request a reversal. That reversal is a new operation with `ParentOperationId`, its own preview, authorization, concurrency check, execution, verification, and audit record. It reads the current state before it changes anything. `RollingBack` remains only for compensation of an operation that stopped before success.
+- `SecretText` is the way a secret enters logs, audit records, and diagnostics. `ToString` and JSON render `[REDACTED]`. Pattern matching may hide a recognizable bearer token in a diagnostic string. It is not the control that finds passwords or client secrets in arbitrary text.
+
+Phase 1 does not perform a directory or cloud write. There is no fake provider in the production projects.

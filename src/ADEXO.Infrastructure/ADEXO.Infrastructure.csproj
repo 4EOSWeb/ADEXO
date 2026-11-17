@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ADEXO.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ADEXO.ActiveDirectory\ADEXO.ActiveDirectory.csproj" />
+    <ProjectReference Include="..\ADEXO.Graph\ADEXO.Graph.csproj" />
+    <ProjectReference Include="..\ADEXO.ExchangeOnline\ADEXO.ExchangeOnline.csproj" />
+    <ProjectReference Include="..\ADEXO.EntraConnect\ADEXO.EntraConnect.csproj" />
+    <ProjectReference Include="..\ADEXO.Security\ADEXO.Security.csproj" />
+    <ProjectReference Include="..\ADEXO.Diagnostics\ADEXO.Diagnostics.csproj" />
+  </ItemGroup>
+</Project>

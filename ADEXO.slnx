@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ADEXO.ActiveDirectory/ADEXO.ActiveDirectory.csproj" />
+    <Project Path="src/ADEXO.Contracts/ADEXO.Contracts.csproj" />
+    <Project Path="src/ADEXO.Core/ADEXO.Core.csproj" />
+    <Project Path="src/ADEXO.Desktop/ADEXO.Desktop.csproj" />
+    <Project Path="src/ADEXO.Diagnostics/ADEXO.Diagnostics.csproj" />
+    <Project Path="src/ADEXO.EntraConnect/ADEXO.EntraConnect.csproj" />
+    <Project Path="src/ADEXO.ExchangeOnline/ADEXO.ExchangeOnline.csproj" />
+    <Project Path="src/ADEXO.Graph/ADEXO.Graph.csproj" />
+    <Project Path="src/ADEXO.Infrastructure/ADEXO.Infrastructure.csproj" />
+    <Project Path="src/ADEXO.Security/ADEXO.Security.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ADEXO.Contracts.Tests/ADEXO.Contracts.Tests.csproj" />
+    <Project Path="tests/ADEXO.Core.Tests/ADEXO.Core.Tests.csproj" />
+  </Folder>
+</Solution>

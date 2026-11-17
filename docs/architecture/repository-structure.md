@@ -1,40 +1,36 @@
 # Repository structure
 
-Status: layout for later phases. Phase 0 creates the `docs/` tree only. It does not add projects, packages, or scripts.
+Status: Phase 1 foundation is in the tree.
 
-The product name is ADEXO. The working name from the brief is Hybrid User Manager for ADUC. Project names keep the `HybridUserManager` prefix so the solution matches the brief. The executable name is `ADEXO.exe`.
+The product name is ADEXO. The working name from the brief is Hybrid User Manager for ADUC. Phase 0 kept a `HybridUserManager` prefix so the solution would match the brief. Phase 1 uses the `ADEXO` prefix instead, because the executable and the repository are ADEXO. The executable name remains `ADEXO.exe`.
 
 ## Source
 
 ```text
 src/
-  HybridUserManager.AducExtension/     Static-launch notes and, later, any native stub. v1 has no in-proc DLL.
-  HybridUserManager.Desktop/           WPF shell. ADEXO.exe.
-  HybridUserManager.Core/              Change operations, capabilities, matching.
-  HybridUserManager.ActiveDirectory/   Active Directory provider.
-  HybridUserManager.Graph/             Microsoft Graph provider.
-  HybridUserManager.ExchangeOnline/    Exchange Online provider.
-  HybridUserManager.PowerShell/        Typed PowerShell session used by Exchange and Entra Connect.
-  HybridUserManager.Security/          MSAL, token cache, pipe ACL.
-  HybridUserManager.Infrastructure/    Logging, configuration, audit store.
-  HybridUserManager.Contracts/         IChangeOperation, capability types, IPC messages.
-  HybridUserManager.Installer/         WiX v4. Workstation files only.
-  HybridUserManager.Diagnostics/       Sanitized support bundle.
+  ADEXO.Contracts/         Identities, capabilities, operations, secrets, configuration.
+  ADEXO.Core/              State machine, cancellation, execution guard, compensation.
+  ADEXO.ActiveDirectory/   Provider project. No directory calls in Phase 1.
+  ADEXO.Graph/             Provider project. No Graph calls in Phase 1.
+  ADEXO.ExchangeOnline/    Provider project. No Exchange calls in Phase 1.
+  ADEXO.EntraConnect/      Provider project. No sync calls in Phase 1.
+  ADEXO.Security/          Boundary for later token protection. No MSAL in Phase 1.
+  ADEXO.Diagnostics/       Boundary for a later support bundle.
+  ADEXO.Infrastructure/    System clock and composition references.
+  ADEXO.Desktop/           WPF shell, net10.0-windows. No provider calls.
 ```
+
+`ADEXO.AducExtension`, `ADEXO.PowerShell`, and `ADEXO.Installer` are not in this phase.
 
 ## Tests
 
 ```text
 tests/
-  HybridUserManager.Core.Tests/
-  HybridUserManager.ActiveDirectory.Tests/
-  HybridUserManager.Graph.Tests/
-  HybridUserManager.ExchangeOnline.Tests/
-  HybridUserManager.IntegrationTests/
-  HybridUserManager.UITests/
+  ADEXO.Contracts.Tests/
+  ADEXO.Core.Tests/
 ```
 
-Phase 1 adds the contracts and core test projects. Integration and UI tests wait until a Windows lab exists. Tests do not call a production tenant or a production domain.
+Provider, integration, and UI tests wait until a Windows lab and a non-production tenant exist. Tests do not call a production tenant or a production domain.
 
 ## Docs
 

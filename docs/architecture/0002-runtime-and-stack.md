@@ -1,6 +1,6 @@
 # ADR 0002: Runtime and stack
 
-Status: accepted as a rule. The target framework is not committed until Phase 1.
+Status: accepted. Phase 1 verified the target framework on November 17, 2026.
 
 ## Runtime rule
 
@@ -42,6 +42,27 @@ No package is added because a blog named it. Each addition records the license, 
 
 The companion uses dependency injection, `ILogger` structured logging, cancellation tokens, and nullable reference types. Analyzers are enabled in Phase 1. Secrets, tokens, and passwords are not log properties.
 
+## Phase 1 verification
+
+Source: [.NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core), last updated November 10, 2026.
+
+- Selected LTS: .NET 10. Support is active. End of support is November 14, 2028.
+- .NET 8 and .NET 9 are out of support. .NET 11 is STS and is not the LTS choice.
+- Portable libraries and tests target `net10.0`.
+- `ADEXO.Desktop` targets `net10.0-windows` because it is the WPF shell. Other projects do not use the `-windows` suffix.
+- `global.json` asks for SDK `10.0.100` and rolls forward inside the 10.0 feature band.
+
+Packages added in Phase 1, from nuget.org:
+
+| Package | Version | License | Reason |
+| --- | --- | --- | --- |
+| `Microsoft.Extensions.Logging.Abstractions` | 10.0.15 | MIT | Structured logging. The 10.0 line matches this LTS. |
+| `xunit` | 2.9.3 | Apache-2.0 | Unit tests. |
+| `xunit.runner.visualstudio` | 4.0.1 | Apache-2.0 | Test discovery. |
+| `Microsoft.NET.Test.Sdk` | 18.12.0 | MIT | Test host. |
+
+`Microsoft.Graph`, `Microsoft.Identity.Client`, `ExchangeOnlineManagement`, and WiX are still not referenced.
+
 ## Host limit
 
-Nothing in this document has been built or tested as a product. The SDK on the Linux host shows that a current LTS compiler is available. It does not show that ADEXO runs on Windows.
+The Linux host can build and test the portable projects. It does not prove that the WPF shell or ADUC integration runs on Windows.
