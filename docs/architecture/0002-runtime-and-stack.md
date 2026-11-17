@@ -63,6 +63,10 @@ Packages added in Phase 1, from nuget.org:
 
 `Microsoft.Graph`, `Microsoft.Identity.Client`, `ExchangeOnlineManagement`, and WiX are still not referenced.
 
+## Phase 2 directory package
+
+`System.DirectoryServices.Protocols` 10.0.15 is referenced by `ADEXO.ActiveDirectory`. It is MIT, published on nuget.org, and it supports `net10.0`. It is the explicit LDAP client. `System.DirectoryServices` is not referenced. Pester 6.2.0, Apache-2.0, from the PowerShell Gallery, tests the registration scripts and is not a runtime dependency.
+
 ## Host limit
 
 The Linux host can build and test the portable projects. It does not prove that the WPF shell or ADUC integration runs on Windows.

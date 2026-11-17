@@ -18,6 +18,7 @@ jobs:
         run: |
           dotnet test tests/ADEXO.Contracts.Tests/ADEXO.Contracts.Tests.csproj --configuration Release
           dotnet test tests/ADEXO.Core.Tests/ADEXO.Core.Tests.csproj --configuration Release
+          dotnet test tests/ADEXO.ActiveDirectory.Tests/ADEXO.ActiveDirectory.Tests.csproj --configuration Release
 
   windows-build:
     runs-on: windows-latest
@@ -28,3 +29,16 @@ jobs:
           global-json-file: global.json
       - name: Restore, build, and test the solution
         run: dotnet test ADEXO.slnx --configuration Release
+      - name: Install pinned Pester and run mocked registration tests
+        shell: pwsh
+        run: |
+          $repository = Get-PSRepository -Name PSGallery
+          if ($repository.SourceLocation -notlike 'https://www.powershellgallery.com/*') {
+            throw "Unexpected PowerShell Gallery source: $($repository.SourceLocation)"
+          }
+          if ($repository.InstallationPolicy -ne 'Trusted') {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          }
+          Install-Module -Name Pester -RequiredVersion 6.2.0 -Repository PSGallery -Scope CurrentUser -ErrorAction Stop
+          Import-Module Pester -RequiredVersion 6.2.0 -ErrorAction Stop
+          Invoke-Pester -Path ./scripts/tests -CI

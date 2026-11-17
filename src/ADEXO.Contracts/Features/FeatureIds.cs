@@ -30,6 +30,16 @@ public sealed class KnownFeatureId : IEquatable<KnownFeatureId>
 
     public static KnownFeatureId EntraConnectSynchronizationDelta { get; } = new("EntraConnect.Synchronization.Delta");
 
+    public static KnownFeatureId ActiveDirectoryUserIdentityRead { get; } = new("ActiveDirectory.User.Identity.Read");
+
+    public static KnownFeatureId ActiveDirectoryUserAccountStateRead { get; } = new("ActiveDirectory.User.AccountState.Read");
+
+    public static KnownFeatureId ActiveDirectoryUserContactRead { get; } = new("ActiveDirectory.User.Contact.Read");
+
+    public static KnownFeatureId ActiveDirectoryUserOrganizationRead { get; } = new("ActiveDirectory.User.Organization.Read");
+
+    public static KnownFeatureId ActiveDirectoryUserMetadataRead { get; } = new("ActiveDirectory.User.Metadata.Read");
+
     public static IReadOnlyList<KnownFeatureId> All => Catalog;
 
     public bool Equals(KnownFeatureId? other) =>

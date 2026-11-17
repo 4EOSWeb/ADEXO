@@ -49,6 +49,15 @@ No SYSTEM service sits on that path. Interactive failure does not switch to the 
 | Display-specifier registration points at a replaced executable path | `Test-ADEXOForestRegistration.ps1` compares the registered command with the installed path. |
 | The audit log is edited to hide a change | The log is stored so that casual users cannot rewrite it. Phase 9 decides the file ACL or an append-only store. v1 does not claim tamper-proof storage beyond that review. |
 
+## Phase 2 launch and directory reads
+
+- A malicious ADsPath is parsed as data. It is not passed to a shell. Trailing command text outside the LDAP URL is rejected. Valid punctuation inside a distinguished name is accepted.
+- The host in the ADsPath does not receive Windows credentials unless it is the domain controller Windows discovery returned.
+- Negotiate is required. Basic, anonymous, and weaker retries are not used. A synchronous LDAP call is bounded by a timeout and is not described as canceled merely because the UI moved on.
+- Registration stores one exact menu value. Unregistration removes that value or stops when more than one ADEXO entry exists. Quoting of `C:\Program Files\ADEXO\ADEXO.exe` is an assumption until ADUC is observed.
+- Default diagnostics omit distinguished names, mail, proxy addresses, and SIDs. A detailed copy is labeled sensitive.
+- The registration scripts are not run by the application. A stale backup is not written back over unrelated menu entries.
+
 ## Out of scope for the product
 
 ADEXO does not extract passwords, bypass MFA or Conditional Access, read other users' session cookies, or store administrator passwords.
