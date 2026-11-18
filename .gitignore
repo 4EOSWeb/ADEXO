@@ -6,3 +6,7 @@ TestResults/
 artifacts/
 scripts/backups/
 testResults.xml
+# Local non-secret cloud configuration. It carries identifiers only, but it is machine-specific and
+# must never be committed. See docs/testing/phase-3-m365-validation.md for the shape.
+adexo.cloud.json
+*.cloud.local.json

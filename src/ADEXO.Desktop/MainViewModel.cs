@@ -67,7 +67,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// The read-only Microsoft 365 section. It owns its own state and never writes AD state, so a
     /// cloud failure cannot unload the Active Directory user.
     /// </summary>
-    public CloudSectionViewModel Cloud { get; }
+    public CloudSectionViewModel Cloud { get; private set; } = new();
+
+    /// <summary>
+    /// Attaches the configured cloud section. Called once by the composition root after the window
+    /// exists, so the broker dialog can be parented to a real handle.
+    /// </summary>
+    public void AttachCloud(CloudSectionViewModel cloud)
+    {
+        ArgumentNullException.ThrowIfNull(cloud);
+        Cloud = cloud;
+        OnPropertyChanged(nameof(Cloud));
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

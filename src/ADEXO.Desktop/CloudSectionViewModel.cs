@@ -94,8 +94,8 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         ? prefix
         : null;
 
+    /// <summary>True when a cloud user may be presented as belonging to the selected AD object.</summary>
     public bool ShowUserData => State == CloudSectionState.Verified && _user is not null;
-
     public string? EntraObjectId => ShowUserData ? _user!.EntraObjectId.ToString("D") : null;
 
     public string? CloudUserPrincipalName => ShowUserData ? _user!.UserPrincipalName : null;

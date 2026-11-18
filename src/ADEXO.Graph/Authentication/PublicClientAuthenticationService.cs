@@ -64,9 +64,25 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
     internal async Task<ProviderResult<string>> AcquireAccessTokenAsync(CancellationToken cancellationToken)
     {
         var result = await TryAcquireSilentTokenAsync(cancellationToken).ConfigureAwait(false);
-        return result.IsSuccess && result.Value is not null
-            ? ProviderResult<string>.Success(result.Value.AccessToken)
-            : ProviderResult<string>.Failed(result.Error!);
+        if (result.IsSuccess && result.Value is not null)
+        {
+            return ProviderResult<string>.Success(result.Value.AccessToken);
+        }
+
+        // A silent failure here means the session needs interaction. That is reported as such rather
+        // than throwing, so a Graph request surfaces a clean authorization failure.
+        return ProviderResult<string>.Failed(result.Error
+            ?? OperationError.Create(FailureCategory.Authentication, "No access token is available."));
+    }
+
+    /// <summary>
+    /// Supplies the access token to the Graph request adapter. The value is handed straight to the
+    /// request and is not retained.
+    /// </summary>
+    public async Task<string> GetAccessTokenForRequestAsync(CancellationToken cancellationToken)
+    {
+        var token = await AcquireAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        return token.IsSuccess && token.Value is not null ? token.Value : string.Empty;
     }
     public async Task<ProviderResult<AuthenticatedAccount>> TryAcquireSilentAsync(CancellationToken cancellationToken)
     {
