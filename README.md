@@ -28,9 +28,11 @@ Installing the program and publishing the ADUC menu are separate steps.
 
 The lab registration scripts are in `scripts/`. They are not run by the application.
 
-Phase 2 implementation complete; Windows domain lab validation pending.
+Phase 2 complete - Windows ADUC and Active Directory lab validation passed.
 
-The read-only path validates an ADUC launch, resolves a user, and shows the user only when a second lookup by objectGUID returns the same GUID. It does not write to the directory and it does not call Microsoft 365. The menu registration scripts are for an approved lab and are not run by the application. ADUC behavior has not been observed in this repository.
+The read-only path validates an ADUC launch, resolves a user, and shows the user only when a second lookup by objectGUID returns the same GUID. It does not write to the directory and it does not call Microsoft 365. The menu registration scripts perform a verified display-specifier change only when an administrator runs them explicitly; they are not run by the application. ADUC behavior was observed in an isolated disposable Windows domain lab, not a production deployment.
+
+See [Phase 2 ADUC validation](docs/testing/phase-2-aduc-validation.md) for the sanitized lab record.
 
 ## Architecture
 

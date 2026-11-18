@@ -1,12 +1,12 @@
 # ADR 0007: ADUC launch contract
 
-Status: accepted for Phase 2 implementation. Windows domain-lab observation is pending.
+Status: accepted. Validated in an isolated Windows domain lab; see [Phase 2 ADUC validation](../testing/phase-2-aduc-validation.md).
 
 ## Context
 
 Phase 0 chose a static `adminContextMenu` command so ADEXO does not load inside `mmc.exe`. Phase 2 has to parse that launch and resolve the selected user by `objectGUID`.
 
-The current Microsoft Learn page [Registering a Static Context Menu Item](https://learn.microsoft.com/en-us/windows/win32/ad/registering-a-static-context-menu-item) was rechecked on November 17, 2026.
+The current Microsoft Learn page [Registering a Static Context Menu Item](https://learn.microsoft.com/en-us/windows/win32/ad/registering-a-static-context-menu-item) was rechecked on November 17, 2026, and the recorded behavior was then confirmed on a Windows Server 2025 lab.
 
 ## Decision
 
@@ -14,19 +14,30 @@ ADEXO registers one static administrative menu item. The value shape is `<order>
 
 The menu caption is `Manage with ADEXO`. Registration is locale-specific. Phase 2 requires the locale to be chosen explicitly. `409` means English and is not a silent default. Administrative snap-ins do not support multiple selection for static items, so Phase 2 does not either. `shellContextMenu` is not used.
 
-Display-specifier data is cached until ADUC or `mmc.exe` is reloaded. That caching behavior is documented by Microsoft and has not been observed in this repository's lab.
+Display-specifier data is cached until ADUC or `mmc.exe` is reloaded. That caching behavior is documented by Microsoft and was also observed in the lab: the menu did not disappear from an open console until the console was closed and reopened.
 
-### Documented
+### Documented by Microsoft
 
 ADUC appends the ADsPath and class to an application command. The command value cannot contain extra parameters such as `Notepad.exe Myfile.txt`. Paths with spaces are allowed. The arguments are separated by a space.
 
-### Implemented assumption
+### Implemented
 
 The registration value stores the absolute executable path. When that path contains a space, the path itself is wrapped in quotes so the command value is still only the path. The quoting strategy is `"C:\Program Files\ADEXO\ADEXO.exe"`.
 
-### Not yet verified
+### Lab-observed
 
-Actual argv tokenization when the executable path contains spaces has not been captured from ADUC. A temporary lab build path is allowed only with the explicit lab override. No observed argument array is recorded here.
+The lab captured the actual process command line for an invocation made from the real static context menu, not from hand-built arguments:
+
+```text
+Executable:  "C:\Program Files\ADEXO\ADEXO.exe"
+Arguments:
+  1. a controller-qualified LDAP ADsPath for the selected object
+  2. user
+```
+
+Exactly two application arguments. The quoting strategy held: the space-bearing Program Files path arrived as a single first argument and the application received the ADsPath and class in the expected structural form. Identifiers are omitted from this record deliberately; the sanitized shape is in the validation note linked above.
+
+This is now observed behavior for this repository, not only documented behavior. The two categories stay separate: where they ever diverge, the observation wins for this codebase and the contradiction is recorded rather than smoothed over.
 
 ## Alternatives Considered
 
@@ -38,10 +49,14 @@ Actual argv tokenization when the executable path contains spaces has not been c
 
 The parser accepts two arguments, an `LDAP://` URL, and the class `user`. It parses the URL into a provider, an optional server, and a distinguished name. The directory connection uses a domain controller discovered by Windows, or the supplied host only when it matches that discovery. The user view is shown only when a second read by binary `objectGUID` returns the same GUID.
 
+Once identity is verified, `objectGUID` is the only identity used. Refresh re-reads by `objectGUID` and does not fall back to the original ADsPath, the distinguished name, the UPN, the `sAMAccountName`, mail, or the display name. The lab confirmed a move changes the distinguished name while `objectGUID` persists, and that Refresh follows the GUID to the new name.
+
 ## Security Impact
 
 The ADsPath is not executed. Negotiate authentication is not sent to an arbitrary host. Signing and sealing are required where the API supports them. A failure to establish that security is a provider failure, not a retry with Basic or anonymous authentication. Registration changes one locale in an approved lab and is not run by the application.
 
+Forest registration now performs a real, verified directory write, but only when an administrator runs the registration script explicitly. The application remains read-only and exposes no directory write. Phase 2 completion does not authorize Active Directory management writes from `ADEXO.Desktop`.
+
 ## Revisit Conditions
 
-Revisit this ADR when a disposable domain lab captures the argument array for `C:\Program Files\ADEXO\ADEXO.exe`, including a path that contains spaces. If that array is not the ADsPath followed by the class, stop and correct the parser before any further launch work.
+Revisit this ADR if a real ADUC build supplies a different argument array, for example a path with no `LDAP://` prefix, additional arguments, or the path without the controller qualification. If that happens, stop and correct the parser before any further launch work; do not relax validation to accommodate the observation.
