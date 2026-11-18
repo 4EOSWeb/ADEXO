@@ -23,7 +23,7 @@ public partial class App : Application
         // The cloud section is attached after the window exists so it can parent the broker dialog to
         // the real window handle. An absent or invalid configuration leaves the section reporting that
         // it is not configured, and the AD view runs unchanged.
-        var (components, _) = CloudSectionFactory.Create(CloudSectionFactory.ResolveConfigurationPath(), clock);
+        var (components, reason) = CloudSectionFactory.Create(CloudSectionFactory.ResolveConfigurationPath(), clock);
         if (components is not null)
         {
             model.AttachCloud(new CloudSectionViewModel(
@@ -31,6 +31,14 @@ public partial class App : Application
                 components.Session,
                 () => BuildSubject(model),
                 () => new System.Windows.Interop.WindowInteropHelper(window).Handle));
+        }
+        else
+        {
+            // Surface why the section is unavailable. A flat "not configured" hides an invalid
+            // identifier or an unreadable file, which makes a lab misconfiguration look like a
+            // missing feature.
+            model.AttachCloud(CloudSectionViewModel.NotConfigured(
+                reason ?? "Microsoft 365 is not configured for this installation."));
         }
 
         window.Show();

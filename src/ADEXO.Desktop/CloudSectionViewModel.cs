@@ -40,6 +40,21 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _refreshCommand = new RelayCommand(() => { }, () => false);
     }
 
+    /// <summary>
+    /// Builds a section that reports why it is unavailable. The reason is a sanitized explanation of
+    /// the configuration problem, never a credential.
+    /// </summary>
+    public static CloudSectionViewModel NotConfigured(string reason)
+    {
+        var section = new CloudSectionViewModel
+        {
+            State = CloudSectionState.NotConfigured,
+            Message = reason,
+        };
+
+        return section;
+    }
+
     public CloudSectionViewModel(
         IMicrosoftAuthenticationService authentication,
         CloudReadSession session,
@@ -62,6 +77,12 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _refreshCommand = new RelayCommand(
             async () => await RefreshAsync(subjectProvider()).ConfigureAwait(true),
             () => !_busy && _account is not null);
+
+        // A configured section starts signed out, not "not configured". Leaving the field default
+        // would report the section as unavailable until the operator did something, which reads as a
+        // configuration failure that is not there.
+        State = CloudSectionState.SignedOut;
+        Message = StateText(CloudSectionState.SignedOut);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

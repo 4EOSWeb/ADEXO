@@ -96,6 +96,34 @@ public sealed class CloudSectionIndependenceTests
         Assert.Equal(string.Empty, model.Cloud.LicenseSummary);
     }
 
+    [Fact]
+    public void A_configured_section_starts_signed_out_rather_than_not_configured()
+    {
+        // The live lab found the configured section reporting NotConfigured, because the state field
+        // defaulted and nothing set it at construction. That reads as a configuration failure.
+        var stub = new StubAuthenticationService();
+        var provider = new ADEXO.Graph.GraphCloudProvider(
+            new NeverCalledReadClient(),
+            new FixedClock());
+        var session = new ADEXO.Graph.Orchestration.CloudReadSession(stub, provider, Guid.Parse("c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af"));
+
+        var section = new CloudSectionViewModel(stub, session, () => null, () => IntPtr.Zero);
+
+        Assert.True(section.IsConfigured);
+        Assert.Equal(CloudSectionState.SignedOut, section.State);
+        Assert.DoesNotContain("not configured", section.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_section_built_without_configuration_reports_the_reason_it_received()
+    {
+        var section = CloudSectionViewModel.NotConfigured("The configured tenant identifier is not valid.");
+
+        Assert.False(section.IsConfigured);
+        Assert.Equal(CloudSectionState.NotConfigured, section.State);
+        Assert.Equal("The configured tenant identifier is not valid.", section.Message);
+    }
+
     private static async Task<MainViewModel> LoadedModelAsync()
     {
         var model = new MainViewModel(
