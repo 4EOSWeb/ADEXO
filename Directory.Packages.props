@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 10.0.15 matches the .NET 10 LTS servicing line. MIT. Structured logging without a custom logger. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.15" />
+    <!-- Apache-2.0. Unit tests for the portable foundation. -->
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <!-- MIT. VSTest host for the unit tests. -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <!-- 10.0.15, MIT, net10.0. Explicit LDAP reads. Not System.DirectoryServices. -->
+    <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.15" />
+  </ItemGroup>
+</Project>
