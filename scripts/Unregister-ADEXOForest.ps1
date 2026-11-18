@@ -26,9 +26,17 @@ if ([string]::IsNullOrWhiteSpace($ExactValue)) {
     }
 }
 
-$result = Invoke-AdexoUnregistration `
-    -ExactValue $ExactValue `
-    -Locale $Locale `
-    -ConfigurationNamingContext $ConfigurationNamingContext
+$invokeParameters = @{
+    ExactValue = $ExactValue
+    Locale = $Locale
+    ConfigurationNamingContext = $ConfigurationNamingContext
+}
+
+# The preference variables are not shared across the module boundary, so the
+# WhatIf and Confirm intent of this script must be forwarded explicitly.
+if ($WhatIfPreference) { $invokeParameters['WhatIf'] = $true }
+if ($PSBoundParameters.ContainsKey('Confirm')) { $invokeParameters['Confirm'] = $PSBoundParameters['Confirm'] }
+
+$result = Invoke-AdexoUnregistration @invokeParameters
 
 $result | ConvertTo-Json -Depth 5

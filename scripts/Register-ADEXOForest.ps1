@@ -22,6 +22,11 @@ $invokeParameters = @{
 }
 if ($PSBoundParameters.ContainsKey('Order')) { $invokeParameters['Order'] = $Order }
 
+# The preference variables are not shared across the module boundary, so the
+# WhatIf and Confirm intent of this script must be forwarded explicitly.
+if ($WhatIfPreference) { $invokeParameters['WhatIf'] = $true }
+if ($PSBoundParameters.ContainsKey('Confirm')) { $invokeParameters['Confirm'] = $PSBoundParameters['Confirm'] }
+
 $record = Invoke-AdexoRegistration @invokeParameters
 
 if (-not [string]::IsNullOrWhiteSpace($TransactionRecordPath) -and $record.verificationResult -eq 'verified') {
