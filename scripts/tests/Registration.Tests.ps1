@@ -277,3 +277,47 @@ Describe 'ADEXO registration mutation' {
         }
     }
 }
+
+Describe 'ADEXO registration scripts forward WhatIf and Confirm' {
+    BeforeAll {
+        $script:ScriptRoot = Join-Path $PSScriptRoot '..'
+        $script:RegisterScript = Join-Path $script:ScriptRoot 'Register-ADEXOForest.ps1'
+        $script:UnregisterScript = Join-Path $script:ScriptRoot 'Unregister-ADEXOForest.ps1'
+    }
+
+    # These assertions read the script text only. Running the scripts from a unit
+    # test would import a fresh copy of the module and bypass the mocks, which
+    # would send a real read to whatever domain the test machine can reach.
+
+    It 'defines the register script as ShouldProcess with a high impact' {
+        $text = Get-Content -LiteralPath $script:RegisterScript -Raw
+        $text | Should -Match 'SupportsShouldProcess\s*=\s*\$true'
+        $text | Should -Match "ConfirmImpact\s*=\s*'High'"
+    }
+
+    It 'defines the unregister script as ShouldProcess with a high impact' {
+        $text = Get-Content -LiteralPath $script:UnregisterScript -Raw
+        $text | Should -Match 'SupportsShouldProcess\s*=\s*\$true'
+        $text | Should -Match "ConfirmImpact\s*=\s*'High'"
+    }
+
+    It 'forwards the WhatIf intent from the register script into the module call' {
+        $text = Get-Content -LiteralPath $script:RegisterScript -Raw
+        $text | Should -Match '\$WhatIfPreference'
+        $text | Should -Match "\`$invokeParameters\['WhatIf'\]\s*=\s*\`$true"
+        $text | Should -Match 'Invoke-AdexoRegistration\s+@invokeParameters'
+    }
+
+    It 'forwards the WhatIf intent from the unregister script into the module call' {
+        $text = Get-Content -LiteralPath $script:UnregisterScript -Raw
+        $text | Should -Match '\$WhatIfPreference'
+        $text | Should -Match "\`$invokeParameters\['WhatIf'\]\s*=\s*\`$true"
+        $text | Should -Match 'Invoke-AdexoUnregistration\s+@invokeParameters'
+    }
+
+    It 'requires an exact value or a record for unregistration' {
+        $text = Get-Content -LiteralPath $script:UnregisterScript -Raw
+        $text | Should -Match 'RecordPath'
+        $text | Should -Match 'never guesses'
+    }
+}
