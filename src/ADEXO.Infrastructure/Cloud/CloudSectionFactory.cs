@@ -54,13 +54,9 @@ public static class CloudSectionFactory
             return (null, configReason);
         }
 
-        var application = PublicClientApplicationBuilder
-            .Create(configuration.ClientId)
-            .WithAuthority(configuration.Authority, validateAuthority: true)
-            .WithRedirectUri(configuration.RedirectUri)
-            .Build();
-
-        var authentication = new PublicClientAuthenticationService(configuration, application);
+        // The service owns application construction so the broker configuration cannot drift between
+        // two call sites. Passing null makes it build the public client with the Windows broker.
+        var authentication = new PublicClientAuthenticationService(configuration);
 
         // The token is attached per request by the adapter's access-token provider, so it is never
         // held outside the pipeline that consumes it.

@@ -62,6 +62,11 @@ public sealed class MicrosoftIdentityConfiguration
     /// <summary>The single-tenant authority. A multi-tenant authority would widen the sign-in surface.</summary>
     public string Authority => $"https://login.microsoftonline.com/{TenantId:D}";
 
-    /// <summary>The broker redirect Microsoft documents for the Windows broker.</summary>
-    public string RedirectUri => $"ms-appx-web://Microsoft.AAD.BrokerPlugin/{ClientId}";
+    /// <summary>
+    /// The broker redirect the app registration must carry, per Microsoft's WAM guidance: "You don't
+    /// need to configure WAM redirect URIs in MSAL, but you do need to configure them in the app
+    /// registration". This value is for the registration only and is deliberately not passed to
+    /// <c>WithRedirectUri</c>, because MSAL resolves it from the broker.
+    /// </summary>
+    public string RegistrationRedirectUri => $"ms-appx-web://Microsoft.AAD.BrokerPlugin/{ClientId}";
 }

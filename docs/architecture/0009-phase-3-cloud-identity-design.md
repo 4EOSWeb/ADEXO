@@ -48,20 +48,35 @@ A single-file publish of the application must set `IncludeNativeLibrariesForSelf
 
 ## 2. Authentication design: MSAL with WAM
 
-Source: [Acquire a token to call a web API by using Web Account Manager](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-acquire-token-wam) and [Public and confidential client apps](https://learn.microsoft.com/en-us/entra/identity-platform/msal-client-applications), both read November 18, 2026.
+Source: [Acquire a token to call a web API by using Web Account Manager](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-acquire-token-wam), [Configure desktop apps that call web APIs](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-app-registration), and [Redirect URI best practices](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url), all re-read November 18, 2026.
 
 ADEXO is a **public client**. It runs on a management workstation, its compiled bytes are inspectable, and it cannot hold a client secret. Microsoft's guidance is explicit that a desktop app is a public client and that public clients cannot have client secrets. Phase 3 therefore uses no secret of any kind.
 
 WAM is an authentication broker, available on Windows 10 and later and on Windows Server 2019 and later. The lab host is Windows Server 2025, so WAM is available. Microsoft lists the benefit as integration with accounts already known to Windows, plus Windows Hello, Conditional Access, and FIDO support.
+
+### Redirect URI: a correction recorded rather than erased
+
+An earlier revision of this ADR recorded that the app registration needed `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` and that the same value had to be passed to `WithRedirectUri`. The registration half was right and the MSAL half was wrong. Both halves are now separated explicitly, because conflating them produced a real defect.
+
+| Question | Answer per current documentation |
+| --- | --- |
+| A. Redirect required by ordinary browser-based desktop authentication? | Yes. Microsoft says apps using system browsers use `http://localhost`, embedded browsers use `https://login.microsoftonline.com/common/oauth2/nativeclient`. |
+| B. Redirect handled by WAM? | Yes. The broker manages the response. Microsoft states: "For Web Authentication Manager (WAM) apps, no redirect URI is needed in MSAL." |
+| C. Redirect that must be configured in the app registration? | Yes, still required. Microsoft states: "You don't need to configure WAM redirect URIs in MSAL, but you do need to configure them in the app registration: `ms-appx-web://Microsoft.AAD.BrokerPlugin/{client_id}`". |
+| D. Redirect that must be passed to `PublicClientApplicationBuilder`? | **No.** The documented WAM pattern builds the client without `WithRedirectUri`. |
+
+So the correction is narrow and specific: ADEXO does **not** call `WithRedirectUri`. The registration value remains, because Microsoft still requires it there. The type exposes `RegistrationRedirectUri` rather than `RedirectUri` so the name states its purpose and cannot be mistaken for an MSAL parameter again, and a test asserts the misleading name does not exist.
+
+This is exactly the kind of version-sensitive identity-platform assumption the discovery gates exist to catch, and it is worth noting that the error was not "the documentation changed" but "the earlier reading collapsed two distinct requirements into one".
 
 Design:
 
 ```text
 PublicClientApplicationBuilder
   .Create(<clientId>)
-  .WithBroker(BrokerOptions.OperatingSystems.Windows)
-  .WithAuthority("https://login.microsoftonline.com/<approved-tenant-id>")
-  .WithRedirectUri("ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>")
+  .WithAuthority("https://login.microsoftonline.com/<approved-tenant-id>", validateAuthority: true)
+  .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows))
+  .Build()                       // no WithRedirectUri: WAM resolves the broker redirect
 ```
 
 Authorization is the OAuth 2.0 authorization code flow with PKCE, executed by WAM. There is no device code flow, no ROPC, no client secret, and no application-only fallback. A failed interactive sign-in does not fall through to any other mode; this preserves the rule already stated in ADR 0003.
@@ -121,7 +136,7 @@ To be created **after** this gate is reviewed. Design only:
 | --- | --- | --- |
 | Supported account type | Accounts in this organizational directory only (single tenant) | The application is for one approved tenant. Single tenant removes an entire class of cross-tenant mistakes before ADEXO's own tenant lock even runs. |
 | Platform | Mobile and desktop applications | Public client. |
-| Redirect URI | `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` | The broker redirect Microsoft documents for WAM. `http://localhost` is not used. |
+| Redirect URI | `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` | The registration value Microsoft documents for a WAM app. It belongs in the registration only; MSAL does not receive it. |
 | Allow public client flows | Yes | Required for a public client desktop app. |
 | Client secret | None | A public client cannot hold one, and none is needed. |
 | Certificates | None | No application-only authentication in Phase 3. |
@@ -227,6 +242,8 @@ The following records what was actually built, including two decisions that chan
 **Correlation returns the matched object.** The first implementation returned only the verdict, so a verified result could not carry the cloud user it had verified. `CorrelateAsync` now returns the verdict and, only when verified, the exact object the evaluator accepted. A refusal cannot leak a rejected candidate's data.
 
 **Exception text is not forwarded.** Identity library exceptions can echo request detail, so a failure is reduced to its category and error code. The token sentinel tests assert a synthetic token appears in no serialized, rendered, or reported artefact.
+
+**`WithRedirectUri` removed.** The WAM guidance was re-read on November 18, 2026 and separates two requirements that an earlier reading had merged: WAM needs no redirect URI in MSAL, but the app registration still needs the broker redirect. Production code therefore builds the client without `WithRedirectUri`, while the registration value stays recorded. The configuration type names it `RegistrationRedirectUri` so the distinction survives in the code, and a test asserts no member named `RedirectUri` exists.
 
 ## Revisit conditions
 

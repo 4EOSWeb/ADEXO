@@ -178,7 +178,6 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
         PublicClientApplicationBuilder
             .Create(configuration.ClientId)
             .WithAuthority(configuration.Authority, validateAuthority: true)
-            .WithRedirectUri(configuration.RedirectUri)
             .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows) { MsaPassthrough = false })
             .WithClientName("ADEXO")
             .Build();

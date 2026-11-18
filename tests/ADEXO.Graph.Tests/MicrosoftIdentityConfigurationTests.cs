@@ -70,7 +70,23 @@ public sealed class MicrosoftIdentityConfigurationTests
         Assert.NotNull(configuration);
         Assert.Equal(Guid.Parse(tenant), configuration.TenantId);
         Assert.Equal($"https://login.microsoftonline.com/{tenant}", configuration.Authority);
-        Assert.Equal($"ms-appx-web://Microsoft.AAD.BrokerPlugin/{client}", configuration.RedirectUri);
+
+        // The broker redirect is a registration value. It is recorded so the portal step is exact,
+        // but MSAL does not receive it: Microsoft documents that WAM needs no redirect URI in MSAL.
+        Assert.Equal(
+            $"ms-appx-web://Microsoft.AAD.BrokerPlugin/{client}",
+            configuration.RegistrationRedirectUri);
+    }
+
+    [Fact]
+    public void The_configuration_exposes_no_msal_redirect_parameter()
+    {
+        // A property that reads as "the value to pass to WithRedirectUri" is exactly the mistake this
+        // correction removes, so the type must not offer one.
+        var names = typeof(MicrosoftIdentityConfiguration).GetProperties().Select(p => p.Name).ToArray();
+
+        Assert.DoesNotContain("RedirectUri", names);
+        Assert.Contains("RegistrationRedirectUri", names);
     }
 
     [Fact]
