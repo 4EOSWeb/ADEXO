@@ -44,7 +44,9 @@ See [Phase 2 ADUC validation](docs/testing/phase-2-aduc-validation.md) for the s
 - [Repository structure](docs/architecture/repository-structure.md)
 - [ADUC launch contract](docs/architecture/0007-aduc-launch-contract.md)
 - [Phase 2 lab checklist](docs/testing/phase-2-aduc-validation.md)
-- [Proposed Phase 3 read-only cloud correlation](docs/architecture/0008-phase-3-readonly-cloud.md)
+- [Phase 3 read-only cloud correlation](docs/architecture/0008-phase-3-readonly-cloud.md)
+- [Phase 3 cloud identity design](docs/architecture/0009-phase-3-cloud-identity-design.md)
+- [Phase 3 Microsoft 365 lab validation](docs/testing/phase-3-m365-validation.md)
 - [Risk register](docs/architecture/risk-register.md)
 - [Threat model](docs/security/threat-model.md)
 

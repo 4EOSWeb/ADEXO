@@ -58,6 +58,19 @@ No SYSTEM service sits on that path. Interactive failure does not switch to the 
 - Default diagnostics omit distinguished names, mail, proxy addresses, and SIDs. A detailed copy is labeled sensitive.
 - The registration scripts are not run by the application. A stale backup is not written back over unrelated menu entries.
 
+## Phase 3 cloud reads (design, not implemented)
+
+Phase 3 adds delegated, read-only Microsoft Graph and Exchange Online access. These rules bind the implementation.
+
+- ADEXO is a public client. It holds no client secret, no certificate, and no application-only credential in any phase-3 path.
+- Authentication is interactive through MSAL with the Windows broker. A failed interactive sign-in never falls through to a silent, device-code, or application-only path.
+- Access tokens and refresh tokens are excluded from logs, the audit trail, diagnostics, the support bundle, and any file ADEXO writes itself. The MSAL token cache is the only token store.
+- The tenant lock is enforced twice: the token tenant identifier is compared to the configured approved tenant before any resource request is composed, and the `/organization` identifier is compared before any data is read. A mismatch stops the phase with no cloud data displayed.
+- Correlation uses `onPremisesImmutableId`, derived from the verified on-premises `objectGUID` or the consistency GUID. A search by UPN, mail, display name, or `sAMAccountName` is not performed, because a mutable name is not proof of identity.
+- The Exchange lookup uses the Entra object identifier, not a UPN, alias, or SMTP address. `Get-EXOMailbox -Identity` is avoided because a null or non-existent value returns every mailbox.
+- Ambiguous or conflicting correlation refuses to display rather than choosing a candidate.
+- Phase 3 has no cloud write path to disable, because none is built. A missing permission is shown as a missing permission and never triggers a broader scope request.
+
 ## Out of scope for the product
 
 ADEXO does not extract passwords, bypass MFA or Conditional Access, read other users' session cookies, or store administrator passwords.

@@ -21,5 +21,9 @@ Status: open as of Phase 0. Likelihood and impact are design judgments. They are
 | R15 | The executable path quoting has not been captured from ADUC. | ~~High~~ Closed | Medium | Closed by the Phase 2 Windows domain lab: `"C:\Program Files\ADEXO\ADEXO.exe"` arrived as a single first argument through the real static context-menu invocation. See [ADR 0007](0007-aduc-launch-contract.md). |
 | R16 | An ADsPath names an untrusted LDAP host. | Medium | High | The connection uses the discovered domain controller, or the named host only when it matches discovery. |
 | R17 | Unregistration matches every copy of ADEXO.exe. | Medium | Medium | Removal requires the exact recorded value and stops on ambiguity. |
+| R18 | An administrator signs in to the wrong tenant and the wrong directory is read or, later, written. | Medium | High | Tenant lock enforced twice: token tenant identifier before any resource call, and the organization identifier before any data read. Mismatch aborts with no cloud data displayed. |
+| R19 | Cloud correlation matches the wrong user through a reassigned UPN or mail address. | Medium | High | Correlation uses `onPremisesImmutableId` only. Ambiguous or conflicting matches refuse to display. No name-based fallback exists. |
+| R20 | A client secret or application-only credential is introduced to simplify phase 3 authentication. | Medium | High | ADEXO is a public client and holds no secret. There is no application-only path in phase 3, and no fallback on interactive failure. |
+| R21 | A token reaches a log, the diagnostics bundle, or a file ADEXO writes. | Medium | High | Tokens are excluded from every artefact ADEXO produces. The MSAL cache is the only store. The validation plan includes a grep of logs and diagnostics. |
 
 Accepted for v1: R6. R1 and R15 are closed by the Phase 2 Windows domain lab. The others stay open until the response is implemented and, where the response is a lab check, until that check has a recorded result.
