@@ -36,6 +36,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IActiveDirectoryProvider _directory;
     private readonly IClock _clock;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly RelayCommand _refreshCommand;
+    private readonly RelayCommand _cancelCommand;
     private int _generation;
     private Guid? _verifiedGuid;
     private string _status = "No user is selected.";
@@ -54,8 +56,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _parser = parser;
         _directory = directory;
         _clock = clock;
-        RefreshCommand = new RelayCommand(async () => await RefreshAsync().ConfigureAwait(true), () => _verifiedGuid is not null && !IsBusy);
-        CancelCommand = new RelayCommand(Cancel, () => IsBusy);
+        RefreshCommand = _refreshCommand = new RelayCommand(async () => await RefreshAsync().ConfigureAwait(true), () => _verifiedGuid is not null && !IsBusy);
+        CancelCommand = _cancelCommand = new RelayCommand(Cancel, () => IsBusy);
         CopyDiagnosticsCommand = new RelayCommand(() => CopiedText = BuildDiagnostics(includeSensitive: false));
         CopyDetailedDiagnosticsCommand = new RelayCommand(() => CopiedText = BuildDiagnostics(includeSensitive: true));
     }
@@ -259,7 +261,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(ShowUser));
     }
 
-    private void OnPropertyChanged(string? name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    private void OnPropertyChanged(string? name)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        if (name == nameof(State) || name == nameof(IsBusy))
+        {
+            Invalidate(_refreshCommand);
+            Invalidate(_cancelCommand);
+        }
+    }
+
+    /// <summary>
+    /// WPF asks a command for <c>CanExecute</c> once, at bind time, and only asks again when the
+    /// command raises <see cref="ICommand.CanExecuteChanged"/>. The Refresh and Cancel predicates
+    /// depend on the verified GUID and the busy state, so a change in either must invalidate them.
+    /// Relying on <c>CommandManager.RequerySuggested</c> instead would make the enabled state depend
+    /// on WPF's input timing and would not be deterministic under test.
+    /// </summary>
+    private static void Invalidate(RelayCommand? command) => command?.RaiseCanExecuteChanged();
 }
 
 public sealed class RelayCommand : ICommand
