@@ -69,7 +69,6 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _signInCommand = new RelayCommand(
             async () => await SignInAsync(ownerWindowHandleProvider()).ConfigureAwait(true),
             () => !_busy);
-
         _signOutCommand = new RelayCommand(
             async () => await SignOutAsync().ConfigureAwait(true),
             () => !_busy && _account is not null);
@@ -179,6 +178,12 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         State = CloudSectionState.SigningIn;
         Message = "Signing in to Microsoft 365.";
 
+        // A sign-in that produces no dialog and no result used to leave the section in SigningIn with
+        // nothing to inspect. The watchdog reports progress after a threshold; it never cancels a
+        // dialog the operator may still be using for MFA.
+        using var watchdog = new AuthenticationWatchdog(this);
+        watchdog.Start();
+
         try
         {
             var signIn = await _authentication.SignInAsync(ownerWindowHandle, CancellationToken.None).ConfigureAwait(true);
@@ -204,6 +209,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         }
         finally
         {
+            watchdog.Stop();
             SetBusy(false);
         }
     }
@@ -307,6 +313,15 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         };
 
         Message = summary ?? "The Microsoft 365 sign-in failed. Active Directory data is unaffected.";
+    }
+
+    /// <summary>
+    /// Appends a progress note to the status message. Called by the watchdog; it never changes the
+    /// state or cancels anything.
+    /// </summary>
+    public void ReportProgress(string note)
+    {
+        Message = string.IsNullOrWhiteSpace(Message) ? note : $"{Message} {note}";
     }
 
     private static string StateText(CloudSectionState state) => state switch

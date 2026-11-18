@@ -17,29 +17,45 @@ namespace ADEXO.Graph.Authentication;
 /// </summary>
 public sealed class PublicClientAuthenticationService : IMicrosoftAuthenticationService, IAsyncDisposable
 {
-    private readonly IPublicClientApplication _application;
     private readonly MicrosoftIdentityConfiguration _configuration;
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly IWindowHandleValidator _windowHandleValidator;
+    private readonly IInteractiveTokenAcquirer _interactiveAcquirer;
+    private readonly ISilentTokenAcquirer _silentAcquirer;
+    private readonly object _stateLock = new();
+    private readonly List<AuthenticationCheckpoint> _checkpoints = [];
+    private long _attemptStartedTicks;
     private AuthenticationState _state = AuthenticationState.SignedOut;
     private AuthenticatedAccount? _account;
 
     /// <summary>
-    /// Created by the composition root. The factory exists so a test can supply its own application
-    /// instance without any test double living in a production assembly.
+    /// Created by the composition root. The optional seams exist so the threading contract can be
+    /// asserted deterministically without a live tenant; production passes none of them.
     /// </summary>
     public PublicClientAuthenticationService(
         MicrosoftIdentityConfiguration configuration,
-        IPublicClientApplication? application = null)
+        IPublicClientApplication? application = null,
+        IWindowHandleValidator? windowHandleValidator = null,
+        IInteractiveTokenAcquirer? interactiveAcquirer = null,
+        ISilentTokenAcquirer? silentAcquirer = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _application = application ?? BuildApplication(configuration);
+        var client = application ?? BuildApplication(configuration);
+        _windowHandleValidator = windowHandleValidator ?? WindowHandleValidator.Instance;
+        _interactiveAcquirer = interactiveAcquirer ?? new MsalInteractiveTokenAcquirer(client);
+        _silentAcquirer = silentAcquirer ?? new MsalSilentTokenAcquirer(client);
     }
+
+    /// <summary>
+    /// Raised whenever the authentication state changes. Handlers run outside the state lock, so a
+    /// handler may freely read <see cref="State"/> or <see cref="CurrentAccount"/>.
+    /// </summary>
+    public event EventHandler<AuthenticationState>? StateChanged;
 
     public AuthenticationState State
     {
         get
         {
-            lock (_gate)
+            lock (_stateLock)
             {
                 return _state;
             }
@@ -50,7 +66,7 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
     {
         get
         {
-            lock (_gate)
+            lock (_stateLock)
             {
                 return _account;
             }
@@ -58,21 +74,18 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
     }
 
     /// <summary>
-    /// The most recent access token, available only to the request pipeline that has to attach it.
-    /// This is deliberately not part of <see cref="IMicrosoftAuthenticationService"/>.
+    /// The checkpoints reached during the most recent sign-in attempt. Thread metadata and elapsed
+    /// time only; this exists so a hang produces evidence instead of silence.
     /// </summary>
-    internal async Task<ProviderResult<string>> AcquireAccessTokenAsync(CancellationToken cancellationToken)
+    public IReadOnlyList<AuthenticationCheckpoint> LastAttemptCheckpoints
     {
-        var result = await TryAcquireSilentTokenAsync(cancellationToken).ConfigureAwait(false);
-        if (result.IsSuccess && result.Value is not null)
+        get
         {
-            return ProviderResult<string>.Success(result.Value.AccessToken);
+            lock (_stateLock)
+            {
+                return [.. _checkpoints];
+            }
         }
-
-        // A silent failure here means the session needs interaction. That is reported as such rather
-        // than throwing, so a Graph request surfaces a clean authorization failure.
-        return ProviderResult<string>.Failed(result.Error
-            ?? OperationError.Create(FailureCategory.Authentication, "No access token is available."));
     }
 
     /// <summary>
@@ -81,18 +94,33 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
     /// </summary>
     public async Task<string> GetAccessTokenForRequestAsync(CancellationToken cancellationToken)
     {
-        var token = await AcquireAccessTokenAsync(cancellationToken).ConfigureAwait(false);
-        return token.IsSuccess && token.Value is not null ? token.Value : string.Empty;
+        var result = await _silentAcquirer.TryAcquireAsync(cancellationToken).ConfigureAwait(false);
+        return result?.AccessToken ?? string.Empty;
     }
+
     public async Task<ProviderResult<AuthenticatedAccount>> TryAcquireSilentAsync(CancellationToken cancellationToken)
     {
-        var silent = await TryAcquireSilentTokenAsync(cancellationToken).ConfigureAwait(false);
-        if (!silent.IsSuccess)
+        AuthenticationResult? silent;
+        try
         {
-            return ProviderResult<AuthenticatedAccount>.Failed(silent.Error!);
+            silent = await _silentAcquirer.TryAcquireAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return ProviderResult<AuthenticatedAccount>.Canceled();
+        }
+        catch (Exception exception)
+        {
+            return ProviderResult<AuthenticatedAccount>.Failed(Sanitize(exception));
         }
 
-        var account = Adopt(silent.Value!);
+        if (silent is null)
+        {
+            return ProviderResult<AuthenticatedAccount>.Failed(
+                OperationError.Create(FailureCategory.Authentication, "Interaction is required to sign in."));
+        }
+
+        var account = Adopt(silent);
         return account is null
             ? ProviderResult<AuthenticatedAccount>.Failed(
                 OperationError.Create(FailureCategory.Authentication, "The token was issued for a different tenant than the configured one."))
@@ -101,78 +129,100 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
 
     public async Task<ProviderResult<AuthenticatedAccount>> SignInAsync(IntPtr ownerWindowHandle, CancellationToken cancellationToken)
     {
-        lock (_gate)
+        // A zero, stale, or foreign handle must be rejected here rather than handed to the broker,
+        // where it can fail in ways that never surface as an exception.
+        var handleProblem = _windowHandleValidator.Validate(ownerWindowHandle);
+        if (handleProblem is not null)
         {
-            _state = AuthenticationState.Authenticating;
+            return Complete(Fail(OperationError.Create(FailureCategory.Validation, handleProblem)));
         }
+
+        BeginAttempt();
+        SetState(AuthenticationState.Authenticating);
 
         try
         {
-            // A silent acquisition is attempted first so an already-signed-in account does not show a
-            // dialog. Only MsalUiRequiredException justifies an interactive prompt.
-            var silent = await TryAcquireSilentTokenAsync(cancellationToken).ConfigureAwait(false);
-            if (silent.IsSuccess)
+            // The silent attempt happens first. Its continuations deliberately do not capture a context:
+            // it is pure I/O and does not touch the UI. Returns null when interaction is required.
+            AuthenticationResult? silentResult;
+            try
             {
-                var adopted = Adopt(silent.Value!);
+                silentResult = await _silentAcquirer.TryAcquireAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return Complete(Cancel());
+            }
+            catch (Exception exception) when (exception is not MsalUiRequiredException)
+            {
+                // Any non-cancellation failure of the silent path is a failure, not a reason to prompt.
+                return Complete(Fail(Sanitize(exception)));
+            }
+
+            Checkpoint("silent-attempt-returned");
+
+            if (silentResult is not null)
+            {
+                var adopted = Adopt(silentResult);
                 return adopted is null
-                    ? TenantMismatchFailure()
-                    : ProviderResult<AuthenticatedAccount>.Success(adopted);
+                    ? Complete(TenantMismatchFailure())
+                    : Complete(ProviderResult<AuthenticatedAccount>.Success(adopted));
             }
 
-            if (silent.Error?.Category != FailureCategory.Authentication)
-            {
-                return Fail(silent.Error!);
-            }
-
-            var interactiveResult = await _application
-                .AcquireTokenInteractive(MicrosoftIdentityConfiguration.Scopes)
-                .WithParentActivityOrWindow(ownerWindowHandle)
-                .ExecuteAsync(cancellationToken)
-                .ConfigureAwait(false);
+            // Interaction is required. The interactive call must be initiated on the thread that owns
+            // the parent window, because WAM is created and driven from that thread. Awaiting the silent
+            // attempt above resumes on a thread-pool thread, so initiating the broker from there would
+            // run it off the UI thread and the request would never surface a dialog. That was the
+            // defect: the state reached SigningIn and nothing else happened.
+            //
+            // Awaiting without ConfigureAwait(false) keeps the continuation on the caller's context, so
+            // the initiation and the resume both happen on the window's thread.
+            Checkpoint("interactive-initiate");
+            var interactiveResult = await _interactiveAcquirer
+                .AcquireAsync(ownerWindowHandle, cancellationToken)
+                .ConfigureAwait(true);
 
             var account = Adopt(interactiveResult);
             return account is null
-                ? TenantMismatchFailure()
-                : ProviderResult<AuthenticatedAccount>.Success(account);
+                ? Complete(TenantMismatchFailure())
+                : Complete(ProviderResult<AuthenticatedAccount>.Success(account));
         }
         catch (MsalUiRequiredException)
         {
             // The broker reported that interaction is required and the interaction itself did not
             // complete. That is a cancel, not a retry trigger.
-            return Cancel("The sign-in did not complete. No token was obtained.");
+            return Complete(Cancel());
         }
         catch (OperationCanceledException)
         {
-            return Cancel("The sign-in was canceled.");
+            return Complete(Cancel());
         }
         catch (MsalClientException exception) when (exception.ErrorCode is "authentication_canceled" or "user_canceled")
         {
-            return Cancel("The sign-in was canceled.");
+            return Complete(Cancel());
+        }
+        catch (MsalClientException exception) when (exception.ErrorCode is "wam_ui_thread")
+        {
+            // Microsoft documents this code for exactly the defect above. Recording it explicitly keeps
+            // a future regression from looking like a generic failure.
+            return Complete(Fail(OperationError.Create(
+                FailureCategory.Authentication,
+                "The interactive request has to start on the thread that owns the parent window (wam_ui_thread).")));
         }
         catch (Exception exception)
         {
-            return Fail(Sanitize(exception));
+            return Complete(Fail(Sanitize(exception)));
         }
     }
 
     public Task SignOutAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        lock (_gate)
-        {
-            _account = null;
-            _state = AuthenticationState.SignedOut;
-        }
-
+        SetState(AuthenticationState.SignedOut, account: null);
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
-    {
-        _gate.Dispose();
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static IPublicClientApplication BuildApplication(MicrosoftIdentityConfiguration configuration) =>
         PublicClientApplicationBuilder
@@ -182,56 +232,17 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
             .WithClientName("ADEXO")
             .Build();
 
-    private async Task<ProviderResult<AuthenticationResult>> TryAcquireSilentTokenAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var accounts = await _application.GetAccountsAsync().ConfigureAwait(false);
-            var cached = accounts.FirstOrDefault();
-            var subject = cached ?? (IAccount?)PublicClientApplication.OperatingSystemAccount;
-
-            if (subject is null)
-            {
-                return ProviderResult<AuthenticationResult>.Failed(
-                    OperationError.Create(FailureCategory.Authentication, "No account is available for a silent sign-in."));
-            }
-
-            var result = await _application
-                .AcquireTokenSilent(MicrosoftIdentityConfiguration.Scopes, subject)
-                .ExecuteAsync(cancellationToken)
-                .ConfigureAwait(false);
-
-            return ProviderResult<AuthenticationResult>.Success(result);
-        }
-        catch (MsalUiRequiredException)
-        {
-            return ProviderResult<AuthenticationResult>.Failed(
-                OperationError.Create(FailureCategory.Authentication, "Interaction is required to sign in."));
-        }
-        catch (OperationCanceledException)
-        {
-            return ProviderResult<AuthenticationResult>.Canceled();
-        }
-        catch (Exception exception)
-        {
-            return ProviderResult<AuthenticationResult>.Failed(Sanitize(exception));
-        }
-    }
-
     /// <summary>
     /// Applies the token tenant lock (T1) and records the session. Returns null when the token tenant
     /// differs from the configured tenant, so no caller can treat a mismatched session as usable.
     /// </summary>
     private AuthenticatedAccount? Adopt(AuthenticationResult result)
     {
+        Checkpoint("token-received");
+
         if (!Guid.TryParse(result.TenantId, out var tokenTenant) || tokenTenant != _configuration.TenantId)
         {
-            lock (_gate)
-            {
-                _account = null;
-                _state = AuthenticationState.TenantMismatch;
-            }
-
+            SetState(AuthenticationState.TenantMismatch, account: null);
             return null;
         }
 
@@ -241,46 +252,76 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
             result.Account?.Username,
             brokerUsed: true);
 
-        lock (_gate)
-        {
-            _account = account;
-            _state = AuthenticationState.Authenticated;
-        }
-
+        SetState(AuthenticationState.Authenticated, account);
         return account;
     }
 
     private ProviderResult<AuthenticatedAccount> TenantMismatchFailure()
     {
-        lock (_gate)
-        {
-            _account = null;
-            _state = AuthenticationState.TenantMismatch;
-        }
+        Checkpoint("tenant-mismatch");
+        SetState(AuthenticationState.TenantMismatch, account: null);
 
         return ProviderResult<AuthenticatedAccount>.Failed(
             OperationError.Create(FailureCategory.Authentication, "The signed-in session belongs to a different tenant than the configured one."));
     }
 
-    private ProviderResult<AuthenticatedAccount> Cancel(string reason)
+    private ProviderResult<AuthenticatedAccount> Cancel()
     {
-        lock (_gate)
-        {
-            _account = null;
-            _state = AuthenticationState.Canceled;
-        }
-
+        Checkpoint("canceled");
+        SetState(AuthenticationState.Canceled, account: null);
         return ProviderResult<AuthenticatedAccount>.Canceled();
     }
 
     private ProviderResult<AuthenticatedAccount> Fail(OperationError error)
     {
-        lock (_gate)
+        Checkpoint($"failed: {error.Category}");
+        SetState(AuthenticationState.Failed);
+        return ProviderResult<AuthenticatedAccount>.Failed(error);
+    }
+
+    /// <summary>Marks the attempt complete so a watchdog can tell a finished attempt from a hung one.</summary>
+    private ProviderResult<AuthenticatedAccount> Complete(ProviderResult<AuthenticatedAccount> result)
+    {
+        Checkpoint("attempt-complete");
+        return result;
+    }
+
+    /// <summary>
+    /// Commits a state change under a brief lock, then raises the event after the lock is released.
+    /// Holding a Monitor across an await, or raising a handler that reads state while the same lock is
+    /// held, is how a UI handler ends up waiting on a lock its own thread already owns.
+    /// </summary>
+    private void SetState(AuthenticationState state, AuthenticatedAccount? account = null)
+    {
+        lock (_stateLock)
         {
-            _state = AuthenticationState.Failed;
+            _state = state;
+            _account = account;
         }
 
-        return ProviderResult<AuthenticatedAccount>.Failed(error);
+        StateChanged?.Invoke(this, state);
+    }
+
+    private void BeginAttempt()
+    {
+        lock (_stateLock)
+        {
+            _checkpoints.Clear();
+            _attemptStartedTicks = Environment.TickCount64;
+        }
+
+        Checkpoint("attempt-begin");
+    }
+
+    private void Checkpoint(string stage)
+    {
+        var thread = Thread.CurrentThread;
+        long elapsed;
+        lock (_stateLock)
+        {
+            elapsed = _attemptStartedTicks == 0 ? 0 : Environment.TickCount64 - _attemptStartedTicks;
+            _checkpoints.Add(new AuthenticationCheckpoint(stage, Environment.CurrentManagedThreadId, thread.GetApartmentState().ToString(), elapsed));
+        }
     }
 
     /// <summary>
