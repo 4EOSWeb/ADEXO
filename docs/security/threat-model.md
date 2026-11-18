@@ -54,7 +54,7 @@ No SYSTEM service sits on that path. Interactive failure does not switch to the 
 - A malicious ADsPath is parsed as data. It is not passed to a shell. Trailing command text outside the LDAP URL is rejected. Valid punctuation inside a distinguished name is accepted.
 - The host in the ADsPath does not receive Windows credentials unless it is the domain controller Windows discovery returned.
 - Negotiate is required. Basic, anonymous, and weaker retries are not used. A synchronous LDAP call is bounded by a timeout and is not described as canceled merely because the UI moved on.
-- Registration stores one exact menu value. Unregistration removes that value or stops when more than one ADEXO entry exists. Quoting of `C:\Program Files\ADEXO\ADEXO.exe` is an assumption until ADUC is observed.
+- Registration stores one exact menu value. Unregistration removes that value or stops when more than one ADEXO entry exists. Quoting of `C:\Program Files\ADEXO\ADEXO.exe` was confirmed in the isolated Phase 2 lab: the quoted path arrived intact as a single argument through the real static context-menu invocation.
 - Default diagnostics omit distinguished names, mail, proxy addresses, and SIDs. A detailed copy is labeled sensitive.
 - The registration scripts are not run by the application. A stale backup is not written back over unrelated menu entries.
 
