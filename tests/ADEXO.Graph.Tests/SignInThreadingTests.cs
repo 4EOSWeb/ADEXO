@@ -160,6 +160,31 @@ public sealed class SignInThreadingTests
         Assert.Equal(AuthenticationState.Canceled, service.State);
     }
 
+    /// <summary>Walks up from the test binary to the repository root so a source assertion can read a file.</summary>
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "ADEXO.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("The repository root was not found.");
+    }
+
+    [Fact]
+    public void The_silent_acquirer_never_uses_the_operating_system_account()
+    {
+        // On a merely domain-joined device the OS account resolves but can never yield a token, and
+        // asking for it stalls rather than failing. The lab proved AzureAdJoined=NO, AzureAdPrt=NO, so
+        // the production acquirer must not reference it at all.
+        var source = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "src", "ADEXO.Graph", "Authentication", "ISilentTokenAcquirer.cs"));
+
+        Assert.DoesNotContain("PublicClientApplication.OperatingSystemAccount", source, StringComparison.Ordinal);
+        Assert.Contains("GetAccountsAsync", source, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Sign_out_clears_the_session_without_blocking()
     {

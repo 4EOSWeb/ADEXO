@@ -20,7 +20,14 @@ public interface ISilentTokenAcquirer
 }
 
 /// <summary>
-/// The production silent acquirer: cached account first, then the operating-system account.
+/// The production silent acquirer: a cached account only.
+/// <para>
+/// The operating-system account is deliberately not used. It only resolves on a device that holds a
+/// Microsoft Entra primary refresh token, and on a device that is merely domain joined it produces an
+/// account object that can never yield a token. Asking for it there does not fail cleanly; it stalls,
+/// which is what the lab observed. Attempting silent acquisition is therefore limited to an account
+/// this application has already cached, and everything else goes straight to the interactive path.
+/// </para>
 /// </summary>
 public sealed class MsalSilentTokenAcquirer : ISilentTokenAcquirer
 {
@@ -33,9 +40,10 @@ public sealed class MsalSilentTokenAcquirer : ISilentTokenAcquirer
     {
         var accounts = await _application.GetAccountsAsync().ConfigureAwait(false);
         var cached = accounts.FirstOrDefault();
-        var subject = cached ?? (IAccount?)PublicClientApplication.OperatingSystemAccount;
 
-        if (subject is null)
+        // No cached account means interaction is required. This is an ordinary first-run state, not an
+        // error, and it must not be reported as one.
+        if (cached is null)
         {
             return null;
         }
@@ -43,7 +51,7 @@ public sealed class MsalSilentTokenAcquirer : ISilentTokenAcquirer
         try
         {
             return await _application
-                .AcquireTokenSilent(MicrosoftIdentityConfiguration.Scopes, subject)
+                .AcquireTokenSilent(MicrosoftIdentityConfiguration.Scopes, cached)
                 .ExecuteAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
