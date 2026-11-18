@@ -17,6 +17,9 @@ public sealed class LdapDirectoryReader : IDirectoryReader
         "whenCreated", "whenChanged", "mail", "telephoneNumber", "mobile", "ipPhone", "streetAddress",
         "l", "st", "postalCode", "co", "title", "department", "company", "physicalDeliveryOfficeName",
         "manager", "mailNickname", "proxyAddresses", "targetAddress", "msExchHideFromAddressLists",
+        // The alternate source-anchor attribute. It is read, never written, and is absent on many
+        // objects; its presence is what allows a second immutable-identifier candidate.
+        "mS-DS-ConsistencyGuid",
         "extensionAttribute1", "extensionAttribute2", "extensionAttribute3", "extensionAttribute4",
         "extensionAttribute5", "extensionAttribute6", "extensionAttribute7", "extensionAttribute8",
         "extensionAttribute9", "extensionAttribute10", "extensionAttribute11", "extensionAttribute12",

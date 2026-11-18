@@ -70,6 +70,9 @@ public static class UserMapper
             TargetAddress = First(bag, "targetAddress"),
             HiddenFromAddressLists = First(bag, "msExchHideFromAddressLists"),
             ExtensionAttributes = extensions,
+            // Read verbatim. The attribute is binary and normally absent; no normalization happens
+            // here, because the correlation layer derives candidates and owns the encoding decision.
+            ConsistencyGuid = bag.Binary.TryGetValue("mS-DS-ConsistencyGuid", out var consistency) ? consistency : null,
             Stage = IdentityStage.DisplayDataLoaded,
         };
     }

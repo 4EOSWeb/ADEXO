@@ -24,6 +24,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     private readonly RelayCommand _signInCommand;
     private readonly RelayCommand _signOutCommand;
     private readonly RelayCommand _refreshCommand;
+    private readonly Func<byte[]?> _consistencyGuidProvider = () => null;
 
     private CloudSectionState _state = CloudSectionState.NotConfigured;
     private string _message = "Microsoft 365 is not configured.";
@@ -59,12 +60,14 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         IMicrosoftAuthenticationService authentication,
         CloudReadSession session,
         Func<AdCorrelationSubject?> subjectProvider,
-        Func<IntPtr> ownerWindowHandleProvider)
+        Func<IntPtr> ownerWindowHandleProvider,
+        Func<byte[]?>? consistencyGuidProvider = null)
     {
         _authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         ArgumentNullException.ThrowIfNull(subjectProvider);
         ArgumentNullException.ThrowIfNull(ownerWindowHandleProvider);
+        _consistencyGuidProvider = consistencyGuidProvider ?? (() => null);
 
         _signInCommand = new RelayCommand(
             async () => await SignInAsync(ownerWindowHandleProvider()).ConfigureAwait(true),
@@ -283,7 +286,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
                 return;
             }
 
-            var correlated = await _session.CorrelateAsync(subject, tenant, consistencyGuid: null, CancellationToken.None).ConfigureAwait(true);
+            var correlated = await _session.CorrelateAsync(subject, tenant, _consistencyGuidProvider(), CancellationToken.None).ConfigureAwait(true);
             var resolved = await _session.ResolveLicensesAsync(correlated, CancellationToken.None).ConfigureAwait(true);
             Apply(resolved);
         }

@@ -139,4 +139,11 @@ public sealed class VerifiedDirectoryUser
         new Dictionary<string, string?>();
 
     public IdentityStage Stage { get; init; } = IdentityStage.DisplayDataLoaded;
+
+    /// <summary>
+    /// The raw <c>mS-DS-ConsistencyGuid</c> bytes, when Active Directory supplied them. This is an
+    /// alternate source-anchor input for cloud correlation. It is read only: ADEXO never writes it, and
+    /// its absence is ordinary, so it is null rather than empty.
+    /// </summary>
+    public byte[]? ConsistencyGuid { get; init; }
 }

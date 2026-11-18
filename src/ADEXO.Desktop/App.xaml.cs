@@ -30,7 +30,8 @@ public partial class App : Application
                 components.Authentication,
                 components.Session,
                 () => BuildSubject(model),
-                () => new System.Windows.Interop.WindowInteropHelper(window).Handle));
+                () => new System.Windows.Interop.WindowInteropHelper(window).Handle,
+                () => model.User?.ConsistencyGuid));
         }
         else
         {
