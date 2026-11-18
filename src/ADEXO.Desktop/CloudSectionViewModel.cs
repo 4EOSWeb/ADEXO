@@ -235,6 +235,16 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             State = CloudSectionState.SignedOut;
             Message = "Signed out of Microsoft 365. Active Directory data is unaffected.";
             OnPropertyChanged(nameof(ShowUserData));
+            OnPropertyChanged(nameof(SignedInAs));
+            OnPropertyChanged(nameof(TenantDisplay));
+            OnPropertyChanged(nameof(EntraObjectId));
+            OnPropertyChanged(nameof(CloudUserPrincipalName));
+            OnPropertyChanged(nameof(CloudMail));
+            OnPropertyChanged(nameof(SyncEnabledDisplay));
+            OnPropertyChanged(nameof(LastSyncDisplay));
+            OnPropertyChanged(nameof(UsageLocationDisplay));
+            OnPropertyChanged(nameof(LicenseSummary));
+            OnPropertyChanged(nameof(CorrelationSummary));
             SetBusy(false);
         }
     }

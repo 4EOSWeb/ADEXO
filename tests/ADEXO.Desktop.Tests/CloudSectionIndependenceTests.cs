@@ -86,6 +86,31 @@ public sealed class CloudSectionIndependenceTests
     }
 
     [Fact]
+    public async Task Signing_out_clears_the_signed_in_identity_and_tenant_display()
+    {
+        // The live lab found the signed-in account and tenant still displayed after sign-out, which
+        // leaves a stale identity visible in a signed-out state.
+        var stub = new StubAuthenticationService
+        {
+            CurrentAccount = Contracts.Cloud.AuthenticatedAccount.Create(
+                null,
+                Guid.Parse("c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af"),
+                "admin@lab.example",
+                true),
+        };
+        var provider = new ADEXO.Graph.GraphCloudProvider(new NeverCalledReadClient(), new FixedClock());
+        var session = new ADEXO.Graph.Orchestration.CloudReadSession(stub, provider, Guid.Parse("c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af"));
+        var section = new CloudSectionViewModel(stub, session, () => null, () => IntPtr.Zero);
+
+        await section.SignOutAsync();
+
+        Assert.Equal(CloudSectionState.SignedOut, section.State);
+        Assert.Null(section.SignedInAs);
+        Assert.Null(section.TenantDisplay);
+        Assert.False(section.ShowUserData);
+    }
+
+    [Fact]
     public async Task The_cloud_section_never_reports_user_data_without_verification()
     {
         var model = await LoadedModelAsync();
