@@ -1,10 +1,14 @@
 # Phase 3 Microsoft 365 lab validation
 
-Status: not started. Discovery gate open. Nothing in this document has been executed.
+Status: Phase 3A implemented, awaiting the app registration gate. Phase 3B not started.
 
-PHASE 3 DISCOVERY GATE
+PHASE 3A APP REGISTRATION GATE
 
-This is the plan for validating Phase 3 against an approved Microsoft 365 lab tenant. It describes what will be observed and how it will be judged. It does not authorize any of it. Every step below is blocked until a person reviews the discovery gate and explicitly authorizes the next step.
+This is the plan for validating Phase 3 against an approved Microsoft 365 lab tenant. It describes what will be observed and how it will be judged. It does not authorize any of it. Every step below is blocked until a person reviews the gate and explicitly authorizes the next step.
+
+## Scope split
+
+Phase 3A covers identity, the tenant lock, Graph correlation, and licence display. Phase 3B covers Exchange Online mailbox metadata, which is not designed in detail yet and is not authorized by this gate. Exchange read cmdlets were not permission-verified during discovery, so they stay out of 3A rather than being guessed at.
 
 ## Approved lab tenant
 

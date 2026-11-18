@@ -16,6 +16,9 @@
             <Button Margin="0,0,8,0" Content="Cancel" Command="{Binding CancelCommand}" />
             <Button Margin="0,0,8,0" Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" Click="CopyDefault" />
             <Button Margin="0,0,8,0" Content="Copy detailed diagnostics (sensitive)" Command="{Binding CopyDetailedDiagnosticsCommand}" Click="CopyDetailed" />
+            <Button Margin="0,0,8,0" Content="Sign in to Microsoft 365" Command="{Binding Cloud.SignInCommand}" Click="SignInCloud" />
+            <Button Margin="0,0,8,0" Content="Refresh Microsoft 365" Command="{Binding Cloud.RefreshCommand}" />
+            <Button Margin="0,0,8,0" Content="Sign out" Command="{Binding Cloud.SignOutCommand}" />
             <Button Content="Close" Click="CloseClick" />
         </StackPanel>
         <ScrollViewer>
@@ -56,6 +59,19 @@
                 <TextBlock Text="{Binding GuidVerification, StringFormat=GUID verification: {0}}" />
                 <TextBlock Text="{Binding ProviderStatus, StringFormat=Provider: {0}}" />
                 <TextBlock Text="{Binding Elapsed, StringFormat=Elapsed: {0}}" />
+                <TextBlock Margin="0,16,0,0" FontWeight="Bold" Text="Microsoft 365 (read-only)" />
+                <TextBlock Text="{Binding Cloud.State, StringFormat=State: {0}}" />
+                <TextBlock Text="{Binding Cloud.Message}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Cloud.SignedInAs, StringFormat=Signed in as: {0}}" />
+                <TextBlock Text="{Binding Cloud.TenantDisplay, StringFormat=Tenant: {0}}" />
+                <TextBlock Text="{Binding Cloud.CorrelationSummary}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Cloud.EntraObjectId, StringFormat=Entra object id: {0}}" />
+                <TextBlock Text="{Binding Cloud.CloudUserPrincipalName, StringFormat=Cloud UPN: {0}}" />
+                <TextBlock Text="{Binding Cloud.CloudMail, StringFormat=Mail: {0}}" />
+                <TextBlock Text="{Binding Cloud.SyncEnabledDisplay, StringFormat=Sync: {0}}" />
+                <TextBlock Text="{Binding Cloud.LastSyncDisplay, StringFormat=Last sync: {0}}" />
+                <TextBlock Text="{Binding Cloud.UsageLocationDisplay, StringFormat=Usage location: {0}}" />
+                <TextBlock Text="{Binding Cloud.LicenseSummary, StringFormat=Licences: {0}}" TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

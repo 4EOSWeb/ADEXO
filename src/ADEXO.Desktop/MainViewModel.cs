@@ -56,11 +56,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _parser = parser;
         _directory = directory;
         _clock = clock;
+        Cloud = new CloudSectionViewModel();
         RefreshCommand = _refreshCommand = new RelayCommand(async () => await RefreshAsync().ConfigureAwait(true), () => _verifiedGuid is not null && !IsBusy);
         CancelCommand = _cancelCommand = new RelayCommand(Cancel, () => IsBusy);
         CopyDiagnosticsCommand = new RelayCommand(() => CopiedText = BuildDiagnostics(includeSensitive: false));
         CopyDetailedDiagnosticsCommand = new RelayCommand(() => CopiedText = BuildDiagnostics(includeSensitive: true));
     }
+
+    /// <summary>
+    /// The read-only Microsoft 365 section. It owns its own state and never writes AD state, so a
+    /// cloud failure cannot unload the Active Directory user.
+    /// </summary>
+    public CloudSectionViewModel Cloud { get; }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

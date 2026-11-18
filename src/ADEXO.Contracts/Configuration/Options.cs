@@ -13,6 +13,9 @@ public sealed class ActiveDirectoryOptions
 public sealed class MicrosoftGraphOptions
 {
     public string? TenantId { get; init; }
+
+    /// <summary>Application (client) identifier of the ADEXO public client registration. Not a secret.</summary>
+    public string? ClientId { get; init; }
 }
 
 public sealed class ExchangeOnlineOptions

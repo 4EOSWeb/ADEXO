@@ -16,5 +16,6 @@
     <Project Path="tests/ADEXO.Contracts.Tests/ADEXO.Contracts.Tests.csproj" />
     <Project Path="tests/ADEXO.Core.Tests/ADEXO.Core.Tests.csproj" />
     <Project Path="tests/ADEXO.Desktop.Tests/ADEXO.Desktop.Tests.csproj" />
+    <Project Path="tests/ADEXO.Graph.Tests/ADEXO.Graph.Tests.csproj" />
   </Folder>
 </Solution>

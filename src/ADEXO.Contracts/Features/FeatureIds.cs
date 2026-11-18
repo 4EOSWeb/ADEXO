@@ -40,6 +40,14 @@ public sealed class KnownFeatureId : IEquatable<KnownFeatureId>
 
     public static KnownFeatureId ActiveDirectoryUserMetadataRead { get; } = new("ActiveDirectory.User.Metadata.Read");
 
+    public static KnownFeatureId MicrosoftGraphUserIdentityRead { get; } = new("MicrosoftGraph.User.Identity.Read");
+
+    public static KnownFeatureId MicrosoftGraphUserSyncStateRead { get; } = new("MicrosoftGraph.User.SyncState.Read");
+
+    public static KnownFeatureId MicrosoftGraphUserLicenseRead { get; } = new("MicrosoftGraph.User.License.Read");
+
+    public static KnownFeatureId MicrosoftGraphTenantVerification { get; } = new("MicrosoftGraph.Tenant.Verification");
+
     public static IReadOnlyList<KnownFeatureId> All => Catalog;
 
     public bool Equals(KnownFeatureId? other) =>

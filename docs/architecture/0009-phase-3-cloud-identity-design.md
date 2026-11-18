@@ -1,8 +1,19 @@
 # ADR 0009: Phase 3 read-only cloud identity design
 
-Status: proposed. Discovery only. No cloud call has been made and no app registration exists.
+Status: Phase 3A implemented, awaiting app registration. Phase 3B not started.
 
 This ADR is the design record for Phase 3. It exists so that implementation starts from verified facts rather than assumptions. Everything below was checked against current Microsoft documentation on November 18, 2026, and against the package feeds on the same date.
+
+## Phase split
+
+Phase 3 is delivered in two halves, and neither completes the other.
+
+| Phase | Scope | State |
+| --- | --- | --- |
+| 3A | Interactive authentication, tenant lock, Graph read-only correlation, licence display | Implemented, awaiting the app registration gate |
+| 3B | Exchange Online mailbox metadata | Not started |
+
+Phase 3 is **not** complete after 3A. The mailbox, forwarding, delegation, archive, and usage data all belong to 3B, and their cmdlets were not permission-verified during discovery.
 
 ## Scope
 
@@ -202,6 +213,20 @@ ADEXO does not loop sign-in after an authorization failure, and does not retry w
 - Phase 3 adds two provider implementations behind the existing contracts: `IGraphProvider` and `IExchangeOnlineProvider`. Neither exposes a write.
 - No new write operation, no new change pipeline use, and no mutation of any cloud or on-premises attribute.
 - The read-only guarantee from Phase 2 extends to the cloud: the application has no cloud write path to disable, because none is built.
+
+## Phase 3A as implemented
+
+The following records what was actually built, including two decisions that changed during implementation.
+
+**Layout.** Abstractions and read models live in `ADEXO.Contracts`; MSAL/WAM and Graph implementations live in `ADEXO.Graph`, which was an empty shell. The Graph request seam is a narrow `IGraphReadClient` with three reads, so the provider can be exercised without a live tenant and the request surface stays enumerable.
+
+**Ordering is structural, not conventional.** `TenantVerificationResult` has no public constructor, so a caller cannot fabricate a verified lock. `GraphCloudProvider.CorrelateAsync` takes that type and returns before composing any request unless `IsVerified`. Tests assert that a failed lock results in zero user queries and zero SKU reads.
+
+**Corroboration requires evidence on both sides.** The first implementation treated a security identifier present in Active Directory but absent in the cloud as a contradiction, which produced `Conflict` for a match that should have been `Verified`. Absence of evidence is not evidence of a different object, so corroboration now compares only when both sides carry the value. A test covers this.
+
+**Correlation returns the matched object.** The first implementation returned only the verdict, so a verified result could not carry the cloud user it had verified. `CorrelateAsync` now returns the verdict and, only when verified, the exact object the evaluator accepted. A refusal cannot leak a rejected candidate's data.
+
+**Exception text is not forwarded.** Identity library exceptions can echo request detail, so a failure is reduced to its category and error code. The token sentinel tests assert a synthetic token appears in no serialized, rendered, or reported artefact.
 
 ## Revisit conditions
 
