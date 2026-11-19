@@ -16,8 +16,20 @@ public static class ExchangeReadCommands
     public const string Disconnect = "Disconnect-ExchangeOnline";
     public const string GetMailbox = "Get-EXOMailbox";
     public const string GetMailboxStatistics = "Get-EXOMailboxStatistics";
-    public const string GetMailboxPermission = "Get-MailboxPermission";
-    public const string GetRecipientPermission = "Get-RecipientPermission";
+
+    /// <summary>
+    /// Full Access is read through the EXO-prefixed cmdlet. The legacy <c>Get-MailboxPermission</c> is
+    /// not exported by ExchangeOnlineManagement 3.11.1 on this platform, so allowlisting it produced a
+    /// delegation read that could never succeed. Verified live against the installed module: 36 exported
+    /// commands, including this one, and it takes <c>-Identity</c>.
+    /// </summary>
+    public const string GetMailboxPermission = "Get-EXOMailboxPermission";
+
+    /// <summary>
+    /// Send As is read through the EXO-prefixed cmdlet, for the same reason as Full Access. The legacy
+    /// <c>Get-RecipientPermission</c> is likewise not exported by the installed module.
+    /// </summary>
+    public const string GetRecipientPermission = "Get-EXORecipientPermission";
 
     /// <summary>Every command that may be invoked on the runspace.</summary>
     public static IReadOnlySet<string> Allowed { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
