@@ -261,7 +261,10 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         ProductSections.BuildActiveDirectory(ActiveDirectory, effectiveUser);
         ProductSections.BuildMicrosoft365(
             Microsoft365,
-            cloudResult?.Account is not null,
+            // A session that failed the tenant lock is not a connected session. Presenting it as
+            // "Connected" would tell an administrator they are signed in to the tenant while ADEXO has
+            // already refused the token, which is the one state this section must never misreport.
+            cloudResult?.Account is not null && cloudResult.State != CloudSectionState.TenantMismatch,
             cloudResult?.Tenant?.ApprovedTenantId,
             cloudResult?.Account?.Username,
             CorrelationState,

@@ -288,6 +288,97 @@ public sealed class CloudResultPropagationTests
         Assert.True(model.Cloud.SignInCommand.CanExecute(null));
     }
 
+    [Fact]
+    public async Task AD_state_survives_a_browser_authentication_failure()
+    {
+        // The brief requires AD to remain intact under both failure paths, not only on cancellation.
+        var (model, _, product) = Build(authentication: new FailingAuthenticationService(
+            Contracts.Results.FailureCategory.Authentication,
+            "The sign-in failed (invalid_grant)."));
+
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+        var guidBefore = model.User!.ObjectGuid;
+
+        await model.Cloud.SignInAsync(IntPtr.Zero);
+
+        Assert.Equal(ReadOnlyViewState.Loaded, model.State);
+        Assert.Equal(guidBefore, model.User!.ObjectGuid);
+        Assert.Equal("Example User", product.StatusLine);
+        Assert.Equal(CloudSectionState.Failed, model.Cloud.State);
+        Assert.Equal("Disconnected", StatusOf(product));
+        Assert.True(model.Cloud.SignInCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task AD_state_survives_a_browser_conditional_access_failure()
+    {
+        var (model, _, product) = Build(authentication: new FailingAuthenticationService(
+            Contracts.Results.FailureCategory.Authorization,
+            "Access has been blocked by Conditional Access policies (AADSTS53003)."));
+
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+        var guidBefore = model.User!.ObjectGuid;
+
+        await model.Cloud.SignInAsync(IntPtr.Zero);
+
+        // The tenant's real policy answer is surfaced, not softened, and AD is untouched.
+        Assert.Equal(CloudSectionState.PermissionMissing, model.Cloud.State);
+        Assert.Contains("AADSTS53003", model.Cloud.Message, StringComparison.Ordinal);
+        Assert.Equal(ReadOnlyViewState.Loaded, model.State);
+        Assert.Equal(guidBefore, model.User!.ObjectGuid);
+        Assert.Equal("Disconnected", StatusOf(product));
+    }
+
+    [Fact]
+    public async Task AD_state_survives_a_wrong_tenant_session()
+    {
+        var otherTenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var (model, _, product) = Build(authentication: new StubAuthenticationService
+        {
+            CurrentAccount = AuthenticatedAccount.Create(null, otherTenant, "someone@other.example", brokerUsed: true),
+        });
+
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+        var guidBefore = model.User!.ObjectGuid;
+
+        await model.Cloud.SignInAsync(IntPtr.Zero);
+
+        Assert.Equal(CloudSectionState.TenantMismatch, model.Cloud.State);
+        Assert.Equal(ReadOnlyViewState.Loaded, model.State);
+        Assert.Equal(guidBefore, model.User!.ObjectGuid);
+        Assert.DoesNotContain(product.Microsoft365.Groups, group =>
+            group.Rows.Any(row => row.Label == "Status" && row.Value == "Connected"));
+    }
+
+    /// <summary>Reports a specific failure, so each failure path can be driven through the real section.</summary>
+    private sealed class FailingAuthenticationService : IMicrosoftAuthenticationService
+    {
+        private readonly Contracts.Results.OperationError _error;
+
+        public FailingAuthenticationService(Contracts.Results.FailureCategory category, string summary)
+        {
+            _error = Contracts.Results.OperationError.Create(category, summary);
+            State = AuthenticationState.Failed;
+        }
+
+        public AuthenticationState State { get; set; }
+
+        public AuthenticatedAccount? CurrentAccount { get; set; }
+
+        public Task<ProviderResult<AuthenticatedAccount>> TryAcquireSilentAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(ProviderResult<AuthenticatedAccount>.Failed(_error));
+
+        public Task<ProviderResult<AuthenticatedAccount>> SignInAsync(IntPtr ownerWindowHandle, CancellationToken cancellationToken) =>
+            Task.FromResult(ProviderResult<AuthenticatedAccount>.Failed(_error));
+
+        public Task SignOutAsync(CancellationToken cancellationToken)
+        {
+            CurrentAccount = null;
+            State = AuthenticationState.SignedOut;
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>Counts attempts so a retry after cancellation can be proven to have started.</summary>
     private sealed class CountingHangingAuthenticationService : IMicrosoftAuthenticationService
     {
