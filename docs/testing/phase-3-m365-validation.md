@@ -1,10 +1,13 @@
 # Phase 3 Microsoft 365 lab validation
 
-Status: Phase 3A implemented, awaiting the app registration gate. Phase 3B not started.
+Status: Phase 3 implemented. App registration in place (broker redirect plus `http://localhost`).
+Live validation partially complete: the broker path passed end to end; the system-browser path is
+partially validated. See [Phase 3 lab limitations](phase-3-lab-limitations.md) for the precise record.
 
 PHASE 3A APP REGISTRATION GATE
 
-This is the plan for validating Phase 3 against an approved Microsoft 365 lab tenant. It describes what will be observed and how it will be judged. It does not authorize any of it. Every step below is blocked until a person reviews the gate and explicitly authorizes the next step.
+This document describes how Phase 3 is validated against an approved Microsoft 365 lab tenant, what was
+observed, and how each observation is judged. Rows are only PASS when the stated evidence was captured.
 
 ## Scope split
 
@@ -102,8 +105,10 @@ Each row is a separate, checkable observation. A row is only PASS when the state
 | # | Observation | Expected | Evidence |
 | --- | --- | --- | --- |
 | A1 | Interactive sign-in through WAM | Broker dialog appears parented to the ADEXO window | Screenshot, no credentials visible |
-| A1b | `SystemBrowserOnly` sign-in | Default browser opens, redirect returns to the loopback listener, T1 then T2 pass | UI capture of signed-in state, no URLs containing tokens |
-| A1c | `Auto` fallback with no broker UI | Progress message states Windows sign-in could not open; browser path completes | UI capture, diagnostics showing preferred/actual/fallback reason |
+| A1b | `SystemBrowserOnly` browser launch and redirect plumbing | Default browser opens, a loopback listener is created, the authorize request carries `code_challenge` with `S256`, and the redirect reaches the ADEXO "Authentication complete" loopback page | UI capture of the browser and of the loopback page, no URLs containing tokens |
+| A1b-2 | `SystemBrowserOnly` interactive sign-in, T1, T2, correlation | Operator completes the credential prompt; a token is returned; T1 then T2 pass; correlation executes; `subscribedSkus` executes; sign-out succeeds | UI capture of the signed-in state and diagnostics |
+| A1c | `Auto` fallback with no broker UI | Progress message states Windows sign-in could not open; the browser path starts; diagnostics record `System browser` and the fallback reason | UI capture, diagnostics showing preferred/actual/fallback reason |
+| A1d | `Auto` with broker UI surfaced late | Broker UI that surfaces inside the observation window suppresses the fallback; the brokered sign-in completes | UI capture, diagnostics showing `Actual = Windows broker` and no fallback reason |
 | A2 | No client secret used | No secret configured, requested, or stored | Configuration inspection |
 | A3 | Signed-in administrator and tenant shown before any cloud data | Both displayed prior to the first read | UI capture |
 | A4 | Token tenant ID equals approved tenant | Match asserted before any resource call | Log line with tenant ID only |
@@ -113,6 +118,17 @@ Each row is a separate, checkable observation. A row is only PASS when the state
 | A8 | Tokens absent from logs and diagnostics | Diagnostics bundle and log contain no token | Grep of both artefacts |
 
 A6 is the most important row in this section. It is the only one that proves the lock actually locks.
+
+**A1b and A1b-2 are deliberately separate rows.** A1b is what a browser launch proves on its own: the process starts, MSAL binds a loopback listener, the authorize request is well formed, and the redirect returns. It does not prove that a token was issued. A1b-2 requires a human to complete the credential prompt and is the only row that would prove the browser path end to end.
+
+Status of the two rows as of the Phase 3 release candidate:
+
+| Row | Status |
+| --- | --- |
+| A1b | **PASS** — observed live |
+| A1b-2 | **PARTIALLY VALIDATED, not PASS.** The operator did not complete the credential prompt during the browser test, so no browser token was issued. Browser T1 and T2 are covered by automated tests only and were not observed live. |
+
+A1b-2 remains a **final pre-release validation item**. It is a known validation gap, not a product defect, and it does not block Phase 4 design.
 
 ### B. AD to Entra correlation
 
@@ -202,4 +218,13 @@ Phase 3 validation passes only when:
 - no cloud write occurred at any point;
 - the read-only guarantee (E1) held in code before the lab and in observation during it.
 
-Until then the status stays PHASE 3 DISCOVERY GATE.
+Current outstanding rows, both from the browser path:
+
+- **A1b-2** — `SystemBrowserOnly` interactive sign-in, T1, T2, correlation. Partially validated: the
+  operator did not complete the credential prompt, so no browser token was issued. Browser T1 and T2 are
+  automated test coverage only.
+- The browser-side equivalents of B, C, D, and the `subscribedSkus` read, which require a completed
+  browser session.
+
+Both are pre-release validation items. They do not block Phase 4 design, and neither is a known product
+defect.

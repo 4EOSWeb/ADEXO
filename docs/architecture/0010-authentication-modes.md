@@ -1,6 +1,6 @@
 # Phase 3 authentication: WAM primary with a bounded browser fallback
 
-Status: implemented. This note records the decision and the trade-off.
+Status: implemented. This note records the decision, the trade-off, and what was actually observed.
 
 ## What the lab established
 
@@ -10,9 +10,10 @@ stopped producing usable interactive UI, and a clean reboot did not restore it.
 
 During Phase 3 live validation the broker behaved intermittently on the same host, in the same session,
 with the same configuration: some attempts surfaced no interactive surface at all and the bounded fallback
-ran to completion, while one attempt surfaced UI after roughly 15.6 seconds and authenticated through the
-broker, passing T1, T2, and correlation. Both outcomes are reproduced in this note deliberately, because
-they are the reason the fallback is bounded by observed UI rather than by elapsed time.
+ran to completion, while one attempt surfaced UI after roughly 15.6 seconds and **authenticated the full
+product through the broker from a cold start**, passing T1, T2, and correlation, then signing out cleanly.
+Both outcomes are reproduced in this note deliberately, because they are the reason the fallback is bounded
+by observed UI rather than by elapsed time.
 
 The precise statement, which matters:
 
@@ -42,7 +43,7 @@ UI, never the operator's pace.
 
 `WamOnly` and `SystemBrowserOnly` are also supported. `WamOnly` never launches a browser and reports its
 failure honestly; it is for organizations that require broker-only authentication. `SystemBrowserOnly`
-skips the broker entirely and exists so the browser path can be validated in isolation.
+skips the broker entirely and exists so the browser path can be observed in isolation.
 
 ## The 20 seconds is not an authentication deadline
 
@@ -125,6 +126,28 @@ Mitigations:
 - T1 and T2 are mandatory on both paths; there is no exception.
 - Conditional Access is never bypassed. If the tenant requires a device-based control the browser path
   cannot satisfy, authentication fails and the real policy error is displayed.
+
+## Validation status
+
+Recorded precisely, because the two paths were not proven to the same depth. See
+[Phase 3 lab limitations](../testing/phase-3-lab-limitations.md) for the full record.
+
+| Aspect | Windows broker | System browser |
+| --- | --- | --- |
+| Launch and redirect mechanics | Proven live | **Proven live** |
+| Interactive authentication completed | **Proven live** | **Not proven live** |
+| T1 | **Proven live** | Automated test coverage only |
+| T2 | **Proven live** | Automated test coverage only |
+| Correlation, `subscribedSkus` | **Proven live** (correlation; `Unmatched`) | Automated test coverage only |
+| Sign-out | **Proven live** | Automated test coverage only |
+
+The browser path's T1 and T2 are the same code as the broker path's and are covered by deterministic
+tests that drive the real authentication service and the real session pipeline. That is not presented as
+a live observation.
+
+**System-browser authentication: PARTIALLY VALIDATED.** A complete live browser session requiring
+operator credential interaction remains a final pre-release validation item. It is a known validation
+gap rather than a product defect, and it does not block further design work.
 
 ## Deployment note
 
