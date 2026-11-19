@@ -102,6 +102,7 @@ public static class CloudConfigurationLoader
 
             var tenantId = ReadString(document.RootElement, "tenantId");
             var clientId = ReadString(document.RootElement, "clientId");
+            var authenticationMode = ReadString(document.RootElement, "authenticationMode");
 
             if (string.IsNullOrWhiteSpace(tenantId) && string.IsNullOrWhiteSpace(clientId))
             {
@@ -109,7 +110,7 @@ public static class CloudConfigurationLoader
                 return null;
             }
 
-            return new CloudConfigurationFile(tenantId, clientId, sourcePath: null);
+            return new CloudConfigurationFile(tenantId, clientId, authenticationMode, sourcePath: null);
         }
     }
 
@@ -120,7 +121,12 @@ public static class CloudConfigurationLoader
     public static MicrosoftGraphOptions ToOptions(this CloudConfigurationFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
-        return new MicrosoftGraphOptions { TenantId = file.TenantId, ClientId = file.ClientId };
+        return new MicrosoftGraphOptions
+        {
+            TenantId = file.TenantId,
+            ClientId = file.ClientId,
+            AuthenticationMode = file.AuthenticationMode ?? "Auto",
+        };
     }
 
     private static string? ReadString(JsonElement root, string name)
@@ -144,8 +150,9 @@ public static class CloudConfigurationLoader
 /// </summary>
 /// <param name="TenantId">The approved tenant identifier.</param>
 /// <param name="ClientId">The application (client) identifier of the public client.</param>
+/// <param name="AuthenticationMode">The requested authentication mode, when supplied.</param>
 /// <param name="sourcePath">Where the document was read from, when read from disk.</param>
-public sealed record CloudConfigurationFile(string? TenantId, string? ClientId, string? sourcePath)
+public sealed record CloudConfigurationFile(string? TenantId, string? ClientId, string? AuthenticationMode, string? sourcePath)
 {
     /// <summary>True when both identifiers are present and the cloud section can be offered.</summary>
     public bool IsComplete => !string.IsNullOrWhiteSpace(TenantId) && !string.IsNullOrWhiteSpace(ClientId);

@@ -344,6 +344,7 @@ public sealed class ProductViewModel : INotifyPropertyChanged
             auth.Rows.Add(DetailProjection.Row("Actual", _cloud.ActualMethodText));
             auth.Rows.Add(DetailProjection.Row("Fallback reason", _cloud.FallbackReasonText,
                 _cloud.HasFallback ? DetailSeverity.Warning : DetailSeverity.Muted));
+            auth.Rows.Add(DetailProjection.Row("Broker start elapsed", _cloud.BrokerElapsedText));
             groups.Add(auth);
         }
 

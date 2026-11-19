@@ -21,6 +21,9 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
     private readonly IInteractiveTokenAcquirer _wamAcquirer;
     private readonly IInteractiveTokenAcquirer _browserAcquirer;
     private readonly ISilentTokenAcquirer _silentAcquirer;
+    private readonly IBrokerSurfaceDetector? _surfaceDetector;
+    private readonly TimeSpan _brokerSurfacingWindow;
+    private readonly IAccountCacheClearer _cacheClearer;
     private readonly object _stateLock = new();
     private readonly List<AuthenticationCheckpoint> _checkpoints = [];
     private long _attemptStartedTicks;
@@ -41,7 +44,10 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
         IInteractiveTokenAcquirer? interactiveAcquirer = null,
         ISilentTokenAcquirer? silentAcquirer = null,
         IInteractiveTokenAcquirer? browserAcquirer = null,
-        AuthenticationMode mode = AuthenticationMode.Auto)
+        AuthenticationMode mode = AuthenticationMode.Auto,
+        IBrokerSurfaceDetector? surfaceDetector = null,
+        TimeSpan? brokerSurfacingWindow = null,
+        IAccountCacheClearer? cacheClearer = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         var wamClient = application ?? IdentityClientFactory.Create(configuration, IdentityClientKind.WindowsBroker);
@@ -51,6 +57,16 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
         _wamAcquirer = interactiveAcquirer ?? new MsalInteractiveTokenAcquirer(wamClient);
         _browserAcquirer = browserAcquirer ?? new MsalInteractiveTokenAcquirer(browserClient);
         _silentAcquirer = silentAcquirer ?? new MsalSilentTokenAcquirer(wamClient);
+        _cacheClearer = cacheClearer ?? new MsalAccountCacheClearer(wamClient, browserClient);
+
+        // Auto is the only mode that needs to tell "the broker showed its UI" from "the broker showed
+        // nothing", so the detector is attached only when a fallback decision can occur. WamOnly and
+        // SystemBrowserOnly never make that decision and therefore never enumerate windows.
+        _surfaceDetector = surfaceDetector
+            ?? (mode == AuthenticationMode.Auto ? BrokerWindowDetector.Instance : null);
+
+        _brokerSurfacingWindow = brokerSurfacingWindow ?? MicrosoftIdentityConfiguration.BrokerSurfacingWindow;
+
         Mode = mode;
     }
 
@@ -65,6 +81,12 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
 
     /// <summary>How long the broker was observed before a fallback decision, when one occurred.</summary>
     public TimeSpan? LastBrokerElapsed { get; private set; }
+
+    /// <summary>
+    /// Raised immediately before the system browser is launched in Auto mode. The shell uses it to tell
+    /// the administrator why a browser window is about to appear. It carries no token and no identity.
+    /// </summary>
+    public event EventHandler<FallbackReason>? BrowserFallbackStarting;
 
     /// <summary>
     /// Raised whenever the authentication state changes. Handlers run outside the state lock, so a
@@ -273,6 +295,13 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
         LastMethod = AuthenticationMethod.SystemBrowser;
         LastBrokerElapsed = brokerElapsed;
 
+        if (fallbackReason is not FallbackReason.None and not FallbackReason.ExplicitUserFallback)
+        {
+            // Announce the fallback before the browser opens, so the message is on screen while the
+            // administrator is looking at a browser window and wondering why it appeared.
+            BrowserFallbackStarting?.Invoke(this, fallbackReason);
+        }
+
         AuthenticationResult result;
         try
         {
@@ -308,8 +337,8 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
         CancellationToken cancellationToken)
     {
         Checkpoint("interactive-initiate-wam");
-        var probe = new BrokerSurfacingProbe();
-        probe.Start();
+        var probe = new BrokerSurfacingProbe(_brokerSurfacingWindow, _surfaceDetector);
+        probe.Start(ownerWindowHandle);
 
         // The broker call must be initiated on the thread that owns the parent window, so it is started
         // here rather than inside a task that would resume on a thread-pool thread.
@@ -328,12 +357,14 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
             probe.Stop();
             return Complete(Cancel(attemptId));
         }
-        catch (MsalClientException exception) when (exception.ErrorCode is "authentication_canceled" or "user_canceled")
+        catch (Exception exception) when (BrokerFailureClassifier.IsUserCancellation(exception))
         {
+            // The operator dismissed the broker dialog. That is an answer, not a broker defect, so it is
+            // reported as a cancellation rather than silently retried in the browser.
             probe.Stop();
             return Complete(Cancel(attemptId));
         }
-        catch (Exception exception) when (exception is not MsalUiRequiredException)
+        catch (Exception exception) when (BrokerFailureClassifier.IsBrokerFailure(exception))
         {
             // A broker that fails to activate is precisely the case the fallback exists for. Failing the
             // whole sign-in here would leave Auto no better than WamOnly.
@@ -346,53 +377,36 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
                 probe.Elapsed,
                 cancellationToken).ConfigureAwait(true);
         }
-        catch (MsalUiRequiredException)
+        catch (Exception exception)
         {
-            // The broker asked for interaction and did not complete it. Treat as a cancel, not a retry.
+            // Any other failure is the operator's or the tenant's own answer (a policy refusal, a consent
+            // requirement, a licence problem). Retrying it in a different browser would not resolve it
+            // and would obscure the real reason, so it is reported honestly.
             probe.Stop();
-            return Complete(Cancel(attemptId));
+            return Complete(Fail(attemptId, Sanitize(exception)));
         }
 
         probe.Stop();
 
         if (observed is not null && !IsSuperseded(attemptId))
         {
+            // The broker produced a token without the browser path ever being considered.
             LastFallbackReason = FallbackReason.None;
             LastMethod = AuthenticationMethod.WindowsBroker;
+            LastBrokerElapsed = probe.Elapsed;
             var account = Adopt(attemptId, observed, AuthenticationMethod.WindowsBroker);
             return account is null
                 ? Complete(TenantMismatchFailure(attemptId))
                 : Complete(ProviderResult<AuthenticatedAccount>.Success(account));
         }
 
-        // The broker produced no token and no usable UI within the window. Retire this attempt so a
-        // late broker completion cannot change state, then fall back.
-        var reason = probe.UiSurfaced
-            ? FallbackReason.None
-            : probe.Classify(activationFailed: false);
+        // Reaching here means the observation window closed with no usable broker UI and no token. The
+        // classification is what the diagnostics record, so it is decided before the attempt is retired.
+        var reason = probe.Classify(activationFailed: false);
+        var elapsed = probe.Elapsed;
 
-        if (reason == FallbackReason.None)
-        {
-            // The UI surfaced but the broker still produced no token. That is the caller's outcome, not
-            // a surfacing failure, so it is not a fallback trigger.
-            try
-            {
-                var late = await brokerTask.ConfigureAwait(true);
-                var lateAccount = Adopt(attemptId, late, AuthenticationMethod.WindowsBroker);
-                return lateAccount is null
-                    ? Complete(TenantMismatchFailure(attemptId))
-                    : Complete(ProviderResult<AuthenticatedAccount>.Success(lateAccount));
-            }
-            catch (OperationCanceledException)
-            {
-                return Complete(Cancel(attemptId));
-            }
-            catch (Exception exception)
-            {
-                return Complete(Fail(attemptId, Sanitize(exception)));
-            }
-        }
-
+        // Retire this attempt first, so a broker that surfaces late cannot change application state
+        // after the browser session has been adopted.
         RetireAttempt(attemptId);
         ObserveDiscardedBroker(brokerTask);
 
@@ -400,7 +414,7 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
             ownerWindowHandle,
             NextAttemptId(),
             reason,
-            probe.Elapsed,
+            elapsed,
             cancellationToken).ConfigureAwait(true);
     }
 
@@ -414,11 +428,22 @@ public sealed class PublicClientAuthenticationService : IMicrosoftAuthentication
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
-    public Task SignOutAsync(CancellationToken cancellationToken)
+    public async Task SignOutAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        SetState(AuthenticationState.SignedOut, account: null);
-        return Task.CompletedTask;
+
+        // The cached account must actually be removed. Clearing only the in-memory session would let the
+        // next silent acquisition succeed, so "Sign out" would appear to work while the administrator
+        // stayed signed in. A cache failure is reported rather than hidden, but the session is cleared
+        // either way: an administrator asking to sign out must not stay visually signed in.
+        try
+        {
+            await _cacheClearer.ClearAsync(cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            SetState(AuthenticationState.SignedOut, account: null);
+        }
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

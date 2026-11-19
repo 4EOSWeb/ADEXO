@@ -86,7 +86,17 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         // configuration failure that is not there.
         State = CloudSectionState.SignedOut;
         Message = StateText(CloudSectionState.SignedOut);
+
+        // The fallback is announced while the browser is opening, not after it has closed, so the
+        // administrator knows why a browser window appeared.
+        if (authentication is PublicClientAuthenticationService service)
+        {
+            service.BrowserFallbackStarting += OnBrowserFallbackStarting;
+        }
     }
+
+    private void OnBrowserFallbackStarting(object? sender, FallbackReason reason) =>
+        ReportBrowserFallback();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -186,7 +196,10 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
 
         SetBusy(true);
         State = CloudSectionState.SigningIn;
-        Message = "Signing in to Microsoft 365.";
+
+        // The wording names the mechanism that is about to be attempted, so the administrator is not
+        // surprised when Windows sign-in appears, or when a browser opens instead.
+        Message = SigningInMessage();
 
         // A sign-in that produces no dialog and no result used to leave the section in SigningIn with
         // nothing to inspect. The watchdog reports progress after a threshold; it never cancels a
@@ -346,6 +359,31 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// The progress wording for the mechanism that is about to be attempted. Auto names Windows first
+    /// because that is the preferred path; the fallback announces itself only if it actually happens.
+    /// </summary>
+    private string SigningInMessage() => _authentication is PublicClientAuthenticationService service
+        ? service.Mode switch
+        {
+            AuthenticationMode.SystemBrowserOnly => "Signing in with your browser...",
+            AuthenticationMode.WamOnly => "Signing in with Windows...",
+            _ => "Signing in with Windows...",
+        }
+        : "Signing in to Microsoft 365.";
+
+    /// <summary>
+    /// Appends a progress note when the bounded broker window has expired and the browser is starting.
+    /// The operator needs to know why a browser window is about to appear.
+    /// </summary>
+    public void ReportBrowserFallback()
+    {
+        if (_authentication is PublicClientAuthenticationService service
+            && service.Mode == AuthenticationMode.Auto)
+        {
+            Message = "Windows sign-in couldn't open. Continuing securely in your browser...";
+        }
+    }
+    /// <summary>
     /// Describes which authentication mechanism was used, in the wording an administrator needs. A
     /// fallback is stated plainly rather than hidden, because it changes the security properties.
     /// </summary>
@@ -409,6 +447,15 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     /// <summary>True when the current session came from the browser because the broker could not be used.</summary>
     public bool HasFallback => _authentication is PublicClientAuthenticationService service
         && service.LastFallbackReason is not FallbackReason.None and not FallbackReason.ExplicitUserFallback;
+
+    /// <summary>
+    /// How long the broker was observed before the fallback decision. Diagnostics only; it contains no
+    /// identity or token material.
+    /// </summary>
+    public string BrokerElapsedText => _authentication is PublicClientAuthenticationService service
+        && service.LastBrokerElapsed is { } elapsed
+            ? $"{elapsed.TotalSeconds:F1}s"
+            : "—";
 
     private static string StateText(CloudSectionState state) => state switch
     {

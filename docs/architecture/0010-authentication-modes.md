@@ -41,7 +41,8 @@ platform needs for account selection, credentials, MFA, Conditional Access, or a
 fallback occurs.
 
 `BrokerSurfacingProbe` enforces this, and a test covers a UI that surfaces after the window would have
-expired.
+expired. It does so by consulting an `IBrokerSurfaceDetector` rather than inferring from timing alone: the
+window measures *absence of broker UI*, never the operator's pace.
 
 ## Both paths share the same identity rules
 
@@ -57,6 +58,31 @@ expired.
 
 The browser path uses MSAL's own authorization code flow with PKCE. No code verifier, challenge, or
 token exchange is implemented in this repository, and tests assert that no such code exists.
+
+## Configuration
+
+The mode is selected in the non-secret configuration document beside the executable:
+
+```json
+{
+  "tenantId": "c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af",
+  "clientId": "5f7f5441-87d9-4fe5-96f2-8a2492c79db7",
+  "authenticationMode": "Auto"
+}
+```
+
+`authenticationMode` accepts `Auto`, `WamOnly`, or `SystemBrowserOnly`, case-insensitively. An absent or
+unrecognized value resolves to `Auto`; a typo in a mode name must not lock an administrator out. The
+document remains identifiers-only: the loader still refuses any property whose name suggests a secret.
+
+## How "UI surfaced" is decided
+
+`BrokerSurfacingProbe` consults `IBrokerSurfaceDetector` while the window is open. The production
+detector, `BrokerWindowDetector`, reports broker UI when a visible top-level window exists that is either
+owned by the ADEXO parent window the broker was given, or owned by the broker host process. Detection is
+best effort, and a missing signal is read as "not surfaced": that is the conservative direction for a
+fallback that exists precisely because a healthy broker can produce no UI. A late broker result cannot
+matter, because the attempt is retired before the browser starts.
 
 ## Accepted trade-off
 

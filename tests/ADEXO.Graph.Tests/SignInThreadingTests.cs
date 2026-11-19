@@ -243,7 +243,7 @@ internal sealed class MicrosoftIdentityConfigurationBuilder
     }
 }
 
-/// <summary>Records the interactive call and can be held, canceled, or made to throw.</summary>
+/// <summary>Records the interactive call and can be held, canceled, delayed, or made to throw.</summary>
 internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
 {
     public int CallCount { get; private set; }
@@ -259,6 +259,12 @@ internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
 
     public Exception? Throw { get; set; }
 
+    /// <summary>A result to return. When null the double refuses to fabricate one.</summary>
+    public AuthenticationResult? Result { get; set; }
+
+    /// <summary>An optional delay, so a slow operator or a late completion can be modelled.</summary>
+    public TimeSpan? Delay { get; set; }
+
     public async Task<AuthenticationResult> AcquireAsync(IntPtr ownerWindowHandle, CancellationToken cancellationToken)
     {
         CallCount++;
@@ -269,9 +275,19 @@ internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
             await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
         }
 
+        if (Delay is { } delay)
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
+
         if (HoldUntil is not null)
         {
             await HoldUntil.ConfigureAwait(false);
+        }
+
+        if (Cancel)
+        {
+            throw new OperationCanceledException();
         }
 
         if (Throw is not null)
@@ -279,9 +295,9 @@ internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
             throw Throw;
         }
 
-        if (Cancel)
+        if (Result is not null)
         {
-            throw new OperationCanceledException();
+            return Result;
         }
 
         // A test double never fabricates a token.

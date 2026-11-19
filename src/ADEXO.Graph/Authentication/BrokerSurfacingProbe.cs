@@ -16,17 +16,42 @@ public sealed class BrokerSurfacingProbe
 {
     private readonly Stopwatch _elapsed = new();
     private readonly TimeSpan _window;
+    private readonly IBrokerSurfaceDetector? _detector;
+    private readonly TimeSpan _pollInterval;
+    private readonly TaskCompletionSource _surfaced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private IntPtr _ownerWindowHandle;
     private int _uiSurfaced;
 
-    public BrokerSurfacingProbe(TimeSpan? window = null) =>
+    /// <param name="window">
+    /// How long the broker is observed for usable UI before the attempt is treated as having produced
+    /// none. Defaults to the approved twenty seconds.
+    /// </param>
+    /// <param name="detector">
+    /// Reports whether broker UI is on screen. Production supplies the window detector; a test may
+    /// supply a stub, or none when it drives <see cref="MarkUiSurfaced"/> directly.
+    /// </param>
+    /// <param name="pollInterval">How often the detector is consulted while the window is open.</param>
+    public BrokerSurfacingProbe(
+        TimeSpan? window = null,
+        IBrokerSurfaceDetector? detector = null,
+        TimeSpan? pollInterval = null)
+    {
         _window = window ?? MicrosoftIdentityConfiguration.BrokerSurfacingWindow;
+        _detector = detector;
+        _pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(250);
+    }
 
     /// <summary>True once the broker has shown its interactive UI or reported active interaction.</summary>
     public bool UiSurfaced => Volatile.Read(ref _uiSurfaced) != 0;
 
     public TimeSpan Elapsed => _elapsed.Elapsed;
 
-    public void Start() => _elapsed.Restart();
+    /// <summary>Starts observing. The handle is the parent window the broker was given.</summary>
+    public void Start(IntPtr ownerWindowHandle = default)
+    {
+        _ownerWindowHandle = ownerWindowHandle;
+        _elapsed.Restart();
+    }
 
     public void Stop() => _elapsed.Stop();
 
@@ -34,7 +59,13 @@ public sealed class BrokerSurfacingProbe
     /// Called when the broker's interactive surface is observed, or when the broker reports that
     /// interaction is under way. After this the window no longer applies.
     /// </summary>
-    public void MarkUiSurfaced() => Interlocked.Exchange(ref _uiSurfaced, 1);
+    public void MarkUiSurfaced()
+    {
+        if (Interlocked.Exchange(ref _uiSurfaced, 1) == 0)
+        {
+            _surfaced.TrySetResult();
+        }
+    }
 
     /// <summary>
     /// Classifies the outcome of a broker attempt that has finished without producing a token.
@@ -60,34 +91,67 @@ public sealed class BrokerSurfacingProbe
     }
 
     /// <summary>
-    /// Awaits the broker task, but gives up on observing it after the window if no UI has surfaced.
+    /// Awaits the broker task, but stops observing it after the window if no usable UI has appeared.
     /// Returns null when the window expired without broker UI.
+    /// <para>
+    /// Once UI is observed the window stops applying entirely: the method then waits for the broker
+    /// however long the operator needs.
+    /// </para>
     /// </summary>
     public async Task<T?> AwaitOrExpireAsync<T>(Task<T> brokerTask, CancellationToken cancellationToken)
         where T : class
     {
         ArgumentNullException.ThrowIfNull(brokerTask);
 
-        var windowTask = Task.Delay(_window, cancellationToken);
-
         while (true)
         {
-            var completed = await Task.WhenAny(brokerTask, windowTask).ConfigureAwait(false);
+            if (UiSurfaced)
+            {
+                // Interaction is live. No deadline applies from here on; the operator may be entering
+                // credentials, completing MFA, or satisfying a Conditional Access policy.
+                return await brokerTask.ConfigureAwait(false);
+            }
 
-            if (completed == brokerTask)
+            var remaining = _window - _elapsed.Elapsed;
+
+            if (remaining <= TimeSpan.Zero)
+            {
+                // One last look before giving up: the broker may have surfaced during the final step.
+                if (_detector?.IsBrokerUiVisible(_ownerWindowHandle) == true)
+                {
+                    MarkUiSurfaced();
+                    continue;
+                }
+
+                return null;
+            }
+
+            var step = remaining < _pollInterval ? remaining : _pollInterval;
+            var delay = Task.Delay(step, cancellationToken);
+
+            var first = await Task.WhenAny(brokerTask, _surfaced.Task, delay).ConfigureAwait(false);
+
+            if (first == brokerTask)
             {
                 return await brokerTask.ConfigureAwait(false);
             }
 
-            // The window elapsed. If the UI surfaced meanwhile, the interaction is legitimate and the
-            // caller must be allowed to finish, so keep waiting rather than abandoning it.
-            if (UiSurfaced)
+            if (first == _surfaced.Task)
             {
-                windowTask = Task.Delay(_window, cancellationToken);
-                continue;
+                // Surfacing is signalled rather than polled, so a broker that appears mid-step is not
+                // missed because the step happened to end first.
+                return await brokerTask.ConfigureAwait(false);
             }
 
-            return null;
+            if (delay.IsCanceled)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (_detector?.IsBrokerUiVisible(_ownerWindowHandle) == true)
+            {
+                MarkUiSurfaced();
+            }
         }
     }
 }

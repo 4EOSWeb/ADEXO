@@ -96,12 +96,47 @@ public sealed class CloudConfigurationLoaderTests
     [Fact]
     public void The_options_conversion_carries_only_identifiers()
     {
-        var file = new CloudConfigurationFile("tenant", "client", null);
+        var file = new CloudConfigurationFile("tenant", "client", null, null);
 
         var options = file.ToOptions();
 
         Assert.Equal("tenant", options.TenantId);
         Assert.Equal("client", options.ClientId);
+    }
+
+    [Fact]
+    public void A_declared_authentication_mode_survives_parsing_and_options_conversion()
+    {
+        const string json = """
+            {
+              "tenantId": "tenant",
+              "clientId": "client",
+              "authenticationMode": "SystemBrowserOnly"
+            }
+            """;
+
+        var file = CloudConfigurationLoader.TryParse(json, out _);
+
+        Assert.NotNull(file);
+        Assert.Equal("SystemBrowserOnly", file.AuthenticationMode);
+        Assert.Equal("SystemBrowserOnly", file.ToOptions().AuthenticationMode);
+    }
+
+    [Fact]
+    public void An_absent_authentication_mode_defaults_to_auto()
+    {
+        const string json = """
+            {
+              "tenantId": "tenant",
+              "clientId": "client"
+            }
+            """;
+
+        var file = CloudConfigurationLoader.TryParse(json, out _);
+
+        Assert.NotNull(file);
+        Assert.Null(file.AuthenticationMode);
+        Assert.Equal("Auto", file.ToOptions().AuthenticationMode);
     }
 
     [Fact]

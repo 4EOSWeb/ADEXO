@@ -43,7 +43,7 @@ public sealed class BrokerSurfacingProbeTests
     public async Task Expiring_without_ui_returns_null_rather_than_waiting_forever()
     {
         // A broker that never surfaces and never completes must not hang the caller.
-        var probe = new BrokerSurfacingProbe(TimeSpan.FromMilliseconds(120));
+        var probe = new BrokerSurfacingProbe(TimeSpan.FromMilliseconds(120), pollInterval: TimeSpan.FromMilliseconds(20));
         probe.Start();
         var never = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -58,17 +58,17 @@ public sealed class BrokerSurfacingProbeTests
     {
         // This is the requirement that a slow operator is never treated as a failure: account selection,
         // credentials, MFA, Conditional Access, or a password reset may take far longer than the window.
-        var probe = new BrokerSurfacingProbe(TimeSpan.FromMilliseconds(100));
+        // The completion deliberately arrives well after the window has elapsed.
+        var probe = new BrokerSurfacingProbe(TimeSpan.FromMilliseconds(200), pollInterval: TimeSpan.FromMilliseconds(20));
         probe.Start();
 
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // Surface the UI shortly after the first window would have expired.
         _ = Task.Run(async () =>
         {
-            await Task.Delay(90);
+            await Task.Delay(20);
             probe.MarkUiSurfaced();
-            await Task.Delay(250);
+            await Task.Delay(400);
             completion.SetResult("done");
         });
 
@@ -76,6 +76,23 @@ public sealed class BrokerSurfacingProbeTests
 
         Assert.NotNull(result);
         Assert.True(probe.UiSurfaced);
+    }
+
+    [Fact]
+    public async Task A_broker_that_surfaces_no_ui_within_the_window_is_reported_as_not_surfaced()
+    {
+        // The window is a failure-to-surface detector. A broker that never shows UI must not keep the
+        // caller waiting, and the classification must say what actually happened.
+        var probe = new BrokerSurfacingProbe(TimeSpan.FromMilliseconds(120), pollInterval: TimeSpan.FromMilliseconds(20));
+        probe.Start();
+
+        var never = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var result = await probe.AwaitOrExpireAsync(never.Task, CancellationToken.None);
+
+        Assert.Null(result);
+        Assert.False(probe.UiSurfaced);
+        Assert.Equal(FallbackReason.BrokerTimeout, probe.Classify(activationFailed: false));
     }
 
     [Fact]

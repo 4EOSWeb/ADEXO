@@ -70,12 +70,18 @@ Discovery produces documents. The next step requires a new authorization.
 | --- | --- |
 | Supported account types | Single tenant |
 | Platform | Mobile and desktop applications |
-| Redirect URI | `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` |
+| Redirect URI (broker) | `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` |
+| Redirect URI (browser fallback) | `http://localhost` |
 | Allow public client flows | Yes |
 | Client secret | none |
 | Certificates | none |
 | Delegated permissions | `User.Read`, `User.Read.All`, `Organization.Read.All` |
 | Admin consent | granted |
+
+Two redirect entries are registered and neither is a secret. The broker entry is the WAM redirect Microsoft
+documents. The loopback entry lets MSAL complete the authorization-code flow in the system browser, which
+is the bounded fallback path described in ADR 0010. Adding the loopback entry grants no additional
+permission, and no application permission, secret, or certificate is added with it.
 
 Delegated scope identifiers, verified in the Graph permissions reference on November 18, 2026:
 
@@ -96,12 +102,14 @@ Each row is a separate, checkable observation. A row is only PASS when the state
 | # | Observation | Expected | Evidence |
 | --- | --- | --- | --- |
 | A1 | Interactive sign-in through WAM | Broker dialog appears parented to the ADEXO window | Screenshot, no credentials visible |
+| A1b | `SystemBrowserOnly` sign-in | Default browser opens, redirect returns to the loopback listener, T1 then T2 pass | UI capture of signed-in state, no URLs containing tokens |
+| A1c | `Auto` fallback with no broker UI | Progress message states Windows sign-in could not open; browser path completes | UI capture, diagnostics showing preferred/actual/fallback reason |
 | A2 | No client secret used | No secret configured, requested, or stored | Configuration inspection |
 | A3 | Signed-in administrator and tenant shown before any cloud data | Both displayed prior to the first read | UI capture |
 | A4 | Token tenant ID equals approved tenant | Match asserted before any resource call | Log line with tenant ID only |
 | A5 | `/organization` `id` equals approved tenant | Match asserted before any data read | Same |
 | A6 | Wrong-tenant session rejected | Sign in to a different tenant, then confirm ADEXO refuses and displays no cloud data | UI capture showing the tenant-lock failure |
-| A7 | No automatic fallback | After a refused or failed sign-in, no application-only or silent retry occurs | Observed behavior |
+| A7 | No automatic fallback | After a refused or failed sign-in in `WamOnly`, no browser, application-only, or silent retry occurs | Observed behavior |
 | A8 | Tokens absent from logs and diagnostics | Diagnostics bundle and log contain no token | Grep of both artefacts |
 
 A6 is the most important row in this section. It is the only one that proves the lock actually locks.
