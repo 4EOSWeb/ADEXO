@@ -5,6 +5,7 @@ using ADEXO.Contracts.Authentication;
 using ADEXO.Contracts.Cloud;
 using ADEXO.Contracts.Results;
 using ADEXO.Core.Correlation;
+using ADEXO.Graph.Authentication;
 using ADEXO.Graph.Orchestration;
 
 namespace ADEXO.Desktop;
@@ -211,6 +212,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             }
 
             _account = signIn.Value;
+            Message = DescribeMethod();
 
             var (tenant, result) = await _session.EstablishTenantAsync(CancellationToken.None).ConfigureAwait(true);
             _tenant = tenant;
@@ -342,6 +344,71 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     {
         Message = string.IsNullOrWhiteSpace(Message) ? note : $"{Message} {note}";
     }
+
+    /// <summary>
+    /// Describes which authentication mechanism was used, in the wording an administrator needs. A
+    /// fallback is stated plainly rather than hidden, because it changes the security properties.
+    /// </summary>
+    private string DescribeMethod()
+    {
+        if (_authentication is not PublicClientAuthenticationService service)
+        {
+            return StateText(State);
+        }
+
+        return service.LastFallbackReason switch
+        {
+            FallbackReason.None when service.LastMethod == AuthenticationMethod.WindowsBroker =>
+                "Signed in with Windows.",
+            FallbackReason.None when service.LastMethod == AuthenticationMethod.SystemBrowser =>
+                "Signed in with your browser.",
+            FallbackReason.BrokerUiNotSurfaced or FallbackReason.BrokerTimeout =>
+                "Windows sign-in couldn't open. Continuing securely in your browser.",
+            FallbackReason.BrokerActivationFailure or FallbackReason.BrokerUnavailable =>
+                "Windows sign-in was unavailable. Continuing securely in your browser.",
+            FallbackReason.ExplicitUserFallback =>
+                "Signed in with your browser.",
+            _ => StateText(State),
+        };
+    }
+
+    /// <summary>The configured mode, named for diagnostics.</summary>
+    public string PreferredMethodText => _authentication is PublicClientAuthenticationService service
+        ? service.Mode switch
+        {
+            AuthenticationMode.WamOnly => "Windows broker only",
+            AuthenticationMode.SystemBrowserOnly => "System browser only",
+            _ => "Windows broker, then browser",
+        }
+        : "—";
+
+    /// <summary>What actually produced the current session.</summary>
+    public string ActualMethodText => _authentication is PublicClientAuthenticationService service
+        ? service.LastMethod switch
+        {
+            AuthenticationMethod.WindowsBroker => "Windows broker",
+            AuthenticationMethod.SystemBrowser => "System browser",
+            _ => _account is null ? "None yet" : "Cached account",
+        }
+        : "—";
+
+    /// <summary>The fallback reason, phrased for a human.</summary>
+    public string FallbackReasonText => _authentication is PublicClientAuthenticationService service
+        ? service.LastFallbackReason switch
+        {
+            FallbackReason.None => "None",
+            FallbackReason.BrokerUnavailable => "Broker unavailable",
+            FallbackReason.BrokerActivationFailure => "Broker activation failed",
+            FallbackReason.BrokerUiNotSurfaced => "Broker UI did not appear",
+            FallbackReason.BrokerTimeout => "Broker timed out before showing UI",
+            FallbackReason.ExplicitUserFallback => "Browser chosen explicitly",
+            _ => "—",
+        }
+        : "—";
+
+    /// <summary>True when the current session came from the browser because the broker could not be used.</summary>
+    public bool HasFallback => _authentication is PublicClientAuthenticationService service
+        && service.LastFallbackReason is not FallbackReason.None and not FallbackReason.ExplicitUserFallback;
 
     private static string StateText(CloudSectionState state) => state switch
     {

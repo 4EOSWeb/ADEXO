@@ -70,6 +70,10 @@ Phase 3 adds delegated, read-only Microsoft Graph and Exchange Online access. Th
 - The Exchange lookup uses the Entra object identifier, not a UPN, alias, or SMTP address. `Get-EXOMailbox -Identity` is avoided because a null or non-existent value returns every mailbox.
 - Ambiguous or conflicting correlation refuses to display rather than choosing a candidate.
 - Phase 3 has no cloud write path to disable, because none is built. A missing permission is shown as a missing permission and never triggers a broader scope request.
+- Interactive authentication prefers the Windows broker. A bounded system-browser fallback (authorization code with PKCE, MSAL-managed) runs only when the broker produces no usable interactive UI within 20 seconds or fails to activate. The window detects absence of UI and is not an authentication deadline; once broker UI surfaces, an administrator may take as long as needed for MFA or Conditional Access.
+- The fallback is an accepted compatibility trade-off. The browser path does not claim the broker's device-bound properties: device-based Conditional Access, Windows Hello through the broker, and token protection are broker-only. The broker is always attempted first in the default mode, `WamOnly` is available where broker-only is required, the two flows never run as simultaneous active sessions, and T1 and T2 are mandatory on both paths.
+- An available broker does not guarantee usable interactive broker UI in every host or session. The project's own harness authenticated through the broker on a device without a primary refresh token, so "no PRT means WAM fails" is not the explanation and is not recorded as one.
+- Conditional Access is never bypassed. A device-based control the browser path cannot satisfy fails authentication and displays the real policy error.
 
 ## Out of scope for the product
 

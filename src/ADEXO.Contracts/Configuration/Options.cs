@@ -16,6 +16,12 @@ public sealed class MicrosoftGraphOptions
 
     /// <summary>Application (client) identifier of the ADEXO public client registration. Not a secret.</summary>
     public string? ClientId { get; init; }
+
+    /// <summary>
+    /// Which interactive authentication path to use: Auto, WamOnly, or SystemBrowserOnly. Auto is the
+    /// default and prefers the Windows broker.
+    /// </summary>
+    public string? AuthenticationMode { get; init; }
 }
 
 public sealed class ExchangeOnlineOptions

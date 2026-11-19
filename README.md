@@ -47,6 +47,8 @@ See [Phase 2 ADUC validation](docs/testing/phase-2-aduc-validation.md) for the s
 - [Phase 3 read-only cloud correlation](docs/architecture/0008-phase-3-readonly-cloud.md)
 - [Phase 3 cloud identity design](docs/architecture/0009-phase-3-cloud-identity-design.md)
 - [Phase 3 Microsoft 365 lab validation](docs/testing/phase-3-m365-validation.md)
+- [Authentication modes](docs/architecture/0010-authentication-modes.md)
+- [Phase 3 lab limitations](docs/testing/phase-3-lab-limitations.md)
 - [Risk register](docs/architecture/risk-register.md)
 - [Threat model](docs/security/threat-model.md)
 

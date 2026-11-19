@@ -59,9 +59,9 @@ public static class CloudSectionFactory
             return (null, configReason);
         }
 
-        // The service owns application construction so the broker configuration cannot drift between
-        // two call sites. Passing null makes it build the public client with the Windows broker.
-        var authentication = new PublicClientAuthenticationService(configuration);
+        // The service owns application construction so broker configuration cannot drift between two
+        // call sites. It builds both clients and applies the configured mode.
+        var authentication = new PublicClientAuthenticationService(configuration, mode: configuration.Mode);
 
         // The token is attached per request by the adapter's access-token provider, so it is never
         // held outside the pipeline that consumes it.

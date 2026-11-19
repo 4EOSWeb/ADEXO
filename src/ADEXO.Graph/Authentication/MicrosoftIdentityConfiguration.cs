@@ -1,3 +1,4 @@
+using ADEXO.Contracts.Authentication;
 using ADEXO.Contracts.Cloud;
 using ADEXO.Contracts.Configuration;
 
@@ -9,15 +10,22 @@ namespace ADEXO.Graph.Authentication;
 /// </summary>
 public sealed class MicrosoftIdentityConfiguration
 {
-    private MicrosoftIdentityConfiguration(Guid tenantId, string clientId)
+    private MicrosoftIdentityConfiguration(Guid tenantId, string clientId, AuthenticationMode mode = AuthenticationMode.Auto)
     {
         TenantId = tenantId;
         ClientId = clientId;
+        Mode = mode;
     }
 
     public Guid TenantId { get; }
 
     public string ClientId { get; }
+
+    /// <summary>
+    /// The configured authentication mode. An unrecognized value is treated as Auto rather than failing,
+    /// because a typo in a mode name should not prevent an administrator from signing in.
+    /// </summary>
+    public AuthenticationMode Mode { get; private set; } = AuthenticationMode.Auto;
 
     /// <summary>The delegated scopes Phase 3A requests. Read-only, and no application permission.</summary>
     public static IReadOnlyList<string> Scopes { get; } =
@@ -55,9 +63,19 @@ public sealed class MicrosoftIdentityConfiguration
             return false;
         }
 
-        configuration = new MicrosoftIdentityConfiguration(tenantId, clientId);
+        var mode = ParseMode(options.AuthenticationMode);
+        configuration = new MicrosoftIdentityConfiguration(tenantId, clientId, mode);
         return true;
     }
+
+    /// <summary>
+    /// Reads the mode. An absent or unrecognized value falls back to Auto: a typo should not lock an
+    /// administrator out, and Auto is both the default and the safest preference order.
+    /// </summary>
+    private static AuthenticationMode ParseMode(string? value) =>
+        Enum.TryParse<AuthenticationMode>(value?.Trim(), ignoreCase: true, out var mode)
+            ? mode
+            : AuthenticationMode.Auto;
 
     /// <summary>The single-tenant authority. A multi-tenant authority would widen the sign-in surface.</summary>
     public string Authority => $"https://login.microsoftonline.com/{TenantId:D}";
@@ -69,4 +87,22 @@ public sealed class MicrosoftIdentityConfiguration
     /// <c>WithRedirectUri</c>, because MSAL resolves it from the broker.
     /// </summary>
     public string RegistrationRedirectUri => $"ms-appx-web://Microsoft.AAD.BrokerPlugin/{ClientId}";
+
+    /// <summary>
+    /// The loopback redirect the app registration must carry for the system-browser path. MSAL listens on
+    /// a loopback port itself and manages the authorization code and PKCE exchange; this value is the
+    /// registration entry only.
+    /// </summary>
+    public const string BrowserRedirectRegistration = "http://localhost";
+
+    /// <summary>
+    /// How long the broker is observed for usable interactive UI before the browser fallback is used.
+    /// <para>
+    /// This is a failure-to-surface detector, not an authentication deadline. Once the broker UI has
+    /// surfaced, or broker interaction is demonstrably active, the window no longer applies: an
+    /// administrator may take as long as they need for account selection, credentials, MFA,
+    /// Conditional Access, or a password reset.
+    /// </para>
+    /// </summary>
+    public static TimeSpan BrokerSurfacingWindow { get; } = TimeSpan.FromSeconds(20);
 }

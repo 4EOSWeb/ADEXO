@@ -19,12 +19,16 @@ public sealed class SignInThreadingTests
         RecordingAcquirer interactive,
         StubWindowHandleValidator? validator = null,
         RequireInteractionSilentAcquirer? silent = null) =>
+        // WamOnly is deliberate here: these tests exercise the broker path in isolation, and Auto would
+        // fall back to the real system browser when no browser seam is supplied.
         new(
-            new TestIdentityConfiguration().Build(),
+            new MicrosoftIdentityConfigurationBuilder().Build(),
             application: null,
             validator ?? new StubWindowHandleValidator(),
-            interactive,
-            silent ?? new RequireInteractionSilentAcquirer());
+            interactiveAcquirer: interactive,
+            silentAcquirer: silent ?? new RequireInteractionSilentAcquirer(),
+            browserAcquirer: new RecordingAcquirer(),
+            mode: Contracts.Authentication.AuthenticationMode.WamOnly);
 
     [Fact]
     public async Task A_rejected_window_handle_never_reaches_the_interactive_call()
@@ -117,7 +121,7 @@ public sealed class SignInThreadingTests
         Assert.NotEmpty(checkpoints);
         Assert.Contains(checkpoints, c => c.Stage == "attempt-begin");
         Assert.Contains(checkpoints, c => c.Stage == "silent-attempt-returned");
-        Assert.Contains(checkpoints, c => c.Stage == "interactive-initiate");
+        Assert.Contains(checkpoints, c => c.Stage.StartsWith("interactive-initiate", StringComparison.Ordinal));
         Assert.All(checkpoints, c => Assert.True(c.ManagedThreadId > 0));
     }
 
@@ -213,8 +217,16 @@ public sealed class SignInThreadingTests
 }
 
 /// <summary>Builds a valid non-secret configuration for tests.</summary>
-internal sealed class TestIdentityConfiguration
+internal sealed class MicrosoftIdentityConfigurationBuilder
 {
+    private string? _mode;
+
+    public MicrosoftIdentityConfigurationBuilder WithMode(string mode)
+    {
+        _mode = mode;
+        return this;
+    }
+
     public MicrosoftIdentityConfiguration Build()
     {
         MicrosoftIdentityConfiguration.TryCreate(
@@ -222,6 +234,7 @@ internal sealed class TestIdentityConfiguration
             {
                 TenantId = "c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af",
                 ClientId = "22222222-3333-4444-5555-666666666666",
+                AuthenticationMode = _mode,
             },
             out var configuration,
             out _);
@@ -239,6 +252,9 @@ internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
 
     public Task? HoldUntil { get; set; }
 
+    /// <summary>When true the call never completes, modelling a broker that produces no UI and no result.</summary>
+    public bool NeverCompletes { get; set; }
+
     public bool Cancel { get; set; }
 
     public Exception? Throw { get; set; }
@@ -247,6 +263,11 @@ internal sealed class RecordingAcquirer : IInteractiveTokenAcquirer
     {
         CallCount++;
         ObservedHandle = ownerWindowHandle;
+
+        if (NeverCompletes)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+        }
 
         if (HoldUntil is not null)
         {

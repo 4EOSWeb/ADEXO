@@ -330,9 +330,22 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         var state2 = new DetailGroup { Title = "State" };
         state2.Rows.Add(DetailProjection.Row("Cloud correlation", CorrelationState));
         state2.Rows.Add(DetailProjection.Row("Mailbox", _mailbox?.Kind.ToString() ?? "Not read"));
+        state2.Rows.Add(DetailProjection.Row("Exchange Online", ExchangeConnectionText));
         state2.Rows.Add(DetailProjection.Row("Elapsed", elapsed?.ToString() ?? "—"));
 
         var groups = new List<DetailGroup> { provider, state2 };
+
+        if (_cloud is not null)
+        {
+            // Which authentication mechanism actually ran, and why it fell back. An administrator
+            // needs this to understand the session's security properties.
+            var auth = new DetailGroup { Title = "Authentication method" };
+            auth.Rows.Add(DetailProjection.Row("Preferred", _cloud.PreferredMethodText));
+            auth.Rows.Add(DetailProjection.Row("Actual", _cloud.ActualMethodText));
+            auth.Rows.Add(DetailProjection.Row("Fallback reason", _cloud.FallbackReasonText,
+                _cloud.HasFallback ? DetailSeverity.Warning : DetailSeverity.Muted));
+            groups.Add(auth);
+        }
 
         if (errors is { Count: > 0 })
         {
