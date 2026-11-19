@@ -95,7 +95,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(product);
         Product = product;
         OnPropertyChanged(nameof(Product));
-        Product.Rebuild(User, null);
+        Product.Rebuild(User, Cloud.LastResult);
+        Product.RefreshDiagnostics(_elapsed);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -272,7 +273,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         // The product sections are derived from the AD user, so they must be rebuilt when it loads or
         // changes. Without this the tabs would keep showing their empty state.
-        Product.Rebuild(User, null);
+        Product.Rebuild(User, Cloud.LastResult);
+        Product.RefreshDiagnostics(_elapsed);
     }
 
     public string BuildDiagnostics(bool includeSensitive)

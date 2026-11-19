@@ -26,6 +26,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     private readonly RelayCommand _signOutCommand;
     private readonly RelayCommand _refreshCommand;
     private readonly Func<byte[]?> _consistencyGuidProvider = () => null;
+    private readonly Func<AdCorrelationSubject?>? _subjectProvider;
 
     private CloudSectionState _state = CloudSectionState.NotConfigured;
     private string _message = "Microsoft 365 is not configured.";
@@ -69,6 +70,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(subjectProvider);
         ArgumentNullException.ThrowIfNull(ownerWindowHandleProvider);
         _consistencyGuidProvider = consistencyGuidProvider ?? (() => null);
+        _subjectProvider = subjectProvider;
 
         _signInCommand = new RelayCommand(
             async () => await SignInAsync(ownerWindowHandleProvider()).ConfigureAwait(true),
@@ -99,6 +101,16 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         ReportBrowserFallback();
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Raised after a sign-in, refresh, or sign-out changes the cloud result, so the product sections can
+    /// be rebuilt from it. Without this the tabs keep the cloud state they had when they were created,
+    /// which is how a completed sign-in left the Microsoft 365 tab reporting "Disconnected".
+    /// </summary>
+    public event EventHandler<CloudSectionResult?>? ResultChanged;
+
+    /// <summary>Exposes the last applied cloud result so the product shell can rebuild from it.</summary>
+    public CloudSectionResult? LastResult { get; private set; }
 
     public ICommand SignInCommand => _signInCommand;
 
@@ -230,6 +242,18 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             var (tenant, result) = await _session.EstablishTenantAsync(CancellationToken.None).ConfigureAwait(true);
             _tenant = tenant;
             Apply(result);
+
+            // Both locks passed, so the cloud read may now begin. Doing it here rather than waiting for a
+            // second click is what makes a sign-in produce a populated view; the ordering is unchanged,
+            // because CorrelateAsync refuses any tenant result that is not verified.
+            if (result.State == CloudSectionState.TenantVerified && _subjectProvider?.Invoke() is { } subject)
+            {
+                var correlated = await _session
+                    .CorrelateAsync(subject, tenant!, _consistencyGuidProvider(), CancellationToken.None)
+                    .ConfigureAwait(true);
+                var resolved = await _session.ResolveLicensesAsync(correlated, CancellationToken.None).ConfigureAwait(true);
+                Apply(resolved);
+            }
         }
         finally
         {
@@ -256,6 +280,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             _tenant = null;
             _user = null;
             _correlationSummary = null;
+            LastResult = null;
             State = CloudSectionState.SignedOut;
             Message = "Signed out of Microsoft 365. Active Directory data is unaffected.";
             OnPropertyChanged(nameof(ShowUserData));
@@ -269,6 +294,10 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(UsageLocationDisplay));
             OnPropertyChanged(nameof(LicenseSummary));
             OnPropertyChanged(nameof(CorrelationSummary));
+
+            // The tabs must stop showing cloud data the moment the session ends, or a signed-out window
+            // would keep presenting a previous administrator's cloud view.
+            ResultChanged?.Invoke(this, null);
             SetBusy(false);
         }
     }
@@ -319,6 +348,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
 
     private void Apply(CloudSectionResult result)
     {
+        LastResult = result;
         State = result.State;
         Message = result.Message ?? StateText(result.State);
         _correlationSummary = result.Correlation?.Summary;
@@ -335,6 +365,10 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(UsageLocationDisplay));
         OnPropertyChanged(nameof(LicenseSummary));
         OnPropertyChanged(nameof(CorrelationSummary));
+
+        // The product tabs are built from this result. It must be announced, because a completed sign-in
+        // that leaves them reporting "Disconnected" is indistinguishable from a failed one.
+        ResultChanged?.Invoke(this, result);
     }
 
     private void ApplyAuthenticationFailure(FailureCategory? category, string? summary)
@@ -347,6 +381,13 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         };
 
         Message = summary ?? "The Microsoft 365 sign-in failed. Active Directory data is unaffected.";
+
+        // A failure is an outcome too. The tabs must clear any previous cloud data rather than keep
+        // showing a session that no longer exists.
+        LastResult = null;
+        _user = null;
+        _correlationSummary = null;
+        ResultChanged?.Invoke(this, null);
     }
 
     /// <summary>

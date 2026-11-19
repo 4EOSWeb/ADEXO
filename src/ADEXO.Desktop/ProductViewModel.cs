@@ -60,6 +60,11 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         _connectionService = connectionService;
         _hasExchangeProvider = mailboxes is not null;
 
+        // The sections are built from the cloud result, so a sign-in, refresh, or sign-out must rebuild
+        // them. Without this the tabs keep the state they had at construction, which reads as a
+        // completed sign-in having done nothing.
+        _cloud.ResultChanged += OnCloudResultChanged;
+
         ConnectExchangeCommand = new RelayCommand(
             async () => await ConnectExchangeAsync().ConfigureAwait(true),
             () => _hasExchangeProvider && !_exchangeBusy && ExchangeConnectionState != ExchangeOnline.ExchangeConnectionState.Connected);
@@ -74,6 +79,18 @@ public sealed class ProductViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>
+    /// Rebuilds the sections whenever the cloud result changes. The AD user is supplied by the shell, so
+    /// it is held here as the last value seen; a cloud change never replaces it.
+    /// </summary>
+    private void OnCloudResultChanged(object? sender, CloudSectionResult? result)
+    {
+        Rebuild(_lastAdUser, result, _cloud?.Message);
+        RefreshDiagnostics();
+    }
+
+    private VerifiedDirectoryUser? _lastAdUser;
 
     public DetailSectionViewModel Overview { get; }
 
@@ -224,11 +241,17 @@ public sealed class ProductViewModel : INotifyPropertyChanged
     /// </summary>
     public void Rebuild(VerifiedDirectoryUser? adUser, CloudSectionResult? cloudResult, string? cloudMessage = null)
     {
+        _lastAdUser = adUser ?? _lastAdUser;
         _cloudUser = cloudResult?.ShowsUserData == true ? cloudResult.User : null;
+
+        // A cloud result without a user is not an AD change: keeping the last AD user is what lets a
+        // cloud refresh rebuild the tabs without blanking the selected directory object.
+        var effectiveUser = _lastAdUser;
+
         CorrelationState = DescribeCorrelation(cloudResult);
 
-        ProductSections.BuildOverview(Overview, adUser, _cloudUser, _mailbox, CorrelationState);
-        ProductSections.BuildActiveDirectory(ActiveDirectory, adUser);
+        ProductSections.BuildOverview(Overview, effectiveUser, _cloudUser, _mailbox, CorrelationState);
+        ProductSections.BuildActiveDirectory(ActiveDirectory, effectiveUser);
         ProductSections.BuildMicrosoft365(
             Microsoft365,
             cloudResult?.Account is not null,
@@ -240,7 +263,7 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         ProductSections.BuildEmailAddresses(EmailAddresses, _mailbox);
         ProductSections.BuildDelegation(Delegation, _delegation);
 
-        StatusLine = adUser is null ? "No user is selected." : adUser.DisplayName ?? adUser.SamAccountName ?? "User";
+        StatusLine = effectiveUser is null ? "No user is selected." : effectiveUser.DisplayName ?? effectiveUser.SamAccountName ?? "User";
         SectionMessage = cloudMessage ?? string.Empty;
 
         RefreshMailboxCommandState();
@@ -304,6 +327,24 @@ public sealed class ProductViewModel : INotifyPropertyChanged
             EmailAddresses.EndLoad();
         }
     }
+
+    /// <summary>
+    /// Rebuilds the diagnostics section. The Diagnostics tab is what an administrator copies into a
+    /// support case, so it must reflect the live session rather than being left at its empty state.
+    /// </summary>
+    public void RefreshDiagnostics(TimeSpan? elapsed = null)
+    {
+        BuildDiagnostics(
+            [.. _capabilities],
+            _lastErrors,
+            _lastCorrelationIds,
+            elapsed ?? _lastElapsed);
+    }
+
+    private readonly List<Contracts.Capabilities.ProviderCapability> _capabilities = [];
+    private IReadOnlyList<string>? _lastErrors;
+    private IReadOnlyList<string>? _lastCorrelationIds;
+    private TimeSpan? _lastElapsed;
 
     /// <summary>Rebuilds the diagnostics section from provider capabilities and the last known state.</summary>
     public void BuildDiagnostics(
@@ -371,6 +412,12 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         }
 
         Diagnostics.Populate([.. groups]);
+
+        _capabilities.Clear();
+        _capabilities.AddRange(capabilities);
+        _lastErrors = errors;
+        _lastCorrelationIds = correlationIds;
+        _lastElapsed = elapsed;
     }
 
     private void RefreshMailboxCommandState()

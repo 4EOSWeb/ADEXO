@@ -48,6 +48,14 @@ public partial class App : Application
             // missing feature.
             model.AttachCloud(CloudSectionViewModel.NotConfigured(
                 reason ?? "Microsoft 365 is not configured for this installation."));
+
+            // The product shell is still attached. Its Active Directory, Overview, and Diagnostics
+            // sections do not depend on the cloud, and leaving them detached showed an empty
+            // Diagnostics tab on a machine that simply had no tenant configured.
+            model.AttachProduct(new ProductViewModel(
+                model.Cloud,
+                mailboxes: null,
+                () => model.Cloud.VerifiedEntraObjectId));
         }
 
         window.Show();
