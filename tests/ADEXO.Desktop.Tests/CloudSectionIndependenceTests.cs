@@ -82,7 +82,11 @@ public sealed class CloudSectionIndependenceTests
             .Select(p => p.Name)
             .ToArray();
 
-        Assert.Equal(["RefreshCommand", "SignInCommand", "SignOutCommand"], names.OrderBy(n => n, StringComparer.Ordinal).ToArray());
+        // Every one of these is a read or a session control. There is no command that changes directory,
+        // cloud, or mailbox state, and the cancel command only abandons a sign-in that is in flight.
+        Assert.Equal(
+            ["CancelCommand", "RefreshCommand", "SignInCommand", "SignOutCommand"],
+            names.OrderBy(n => n, StringComparer.Ordinal).ToArray());
     }
 
     [Fact]

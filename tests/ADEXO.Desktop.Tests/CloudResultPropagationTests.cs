@@ -1,3 +1,4 @@
+using ADEXO.Contracts.Authentication;
 using ADEXO.Contracts.Cloud;
 using ADEXO.Contracts.Directory;
 using ADEXO.Contracts.Launch;
@@ -33,14 +34,15 @@ public sealed class CloudResultPropagationTests
         Stage = IdentityStage.DisplayDataLoaded,
     };
 
-    private static (MainViewModel Model, CloudSectionViewModel Cloud, ProductViewModel Product) Build()
+    private static (MainViewModel Model, CloudSectionViewModel Cloud, ProductViewModel Product) Build(
+        IMicrosoftAuthenticationService? authentication = null)
     {
         var model = new MainViewModel(
             new AducLaunchRequestParser(new FixedClock()),
             new FakeDirectory { User = AdUser() },
             new FixedClock());
 
-        var authentication = new StubAuthenticationService
+        authentication ??= new StubAuthenticationService
         {
             CurrentAccount = AuthenticatedAccount.Create(null, ApprovedTenant, "administrator@testdomain387.onmicrosoft.com", brokerUsed: false),
         };
@@ -156,6 +158,74 @@ public sealed class CloudResultPropagationTests
 
         var values = product.Diagnostics.Groups.SelectMany(group => group.Rows).Select(row => row.Value);
         Assert.DoesNotContain(values, value => value.Contains("eyJ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Cancelling_an_in_flight_sign_in_leaves_every_command_usable_again()
+    {
+        // The live defect: an operator closed the browser window, the sign-in never returned, and every
+        // command stayed disabled, so the only way out was to kill the process.
+        var (model, _, product) = Build(authentication: new HangingAuthenticationService());
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+
+        var signIn = model.Cloud.SignInAsync(IntPtr.Zero);
+
+        Assert.False(model.Cloud.SignInCommand.CanExecute(null));
+        Assert.True(model.Cloud.CancelCommand.CanExecute(null));
+
+        model.Cloud.CancelAttempt();
+
+        // The attempt must not remain pending indefinitely.
+        var completed = await Task.WhenAny(signIn, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(signIn, completed);
+
+        Assert.Equal(CloudSectionState.Canceled, model.Cloud.State);
+        Assert.Contains("unaffected", model.Cloud.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(model.Cloud.SignInCommand.CanExecute(null));
+        Assert.False(model.Cloud.CancelCommand.CanExecute(null));
+        Assert.Equal(ReadOnlyViewState.Loaded, model.State);
+        Assert.Equal("Example User", product.StatusLine);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_sign_in_clears_any_cloud_state_from_the_tabs()
+    {
+        var (model, _, product) = Build(authentication: new HangingAuthenticationService());
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+
+        var signIn = model.Cloud.SignInAsync(IntPtr.Zero);
+        model.Cloud.CancelAttempt();
+        await signIn;
+
+        Assert.Equal("Disconnected", StatusOf(product));
+    }
+
+    /// <summary>
+    /// A sign-in that never returns, modelling a browser window the operator closed. It honours the
+    /// cancellation token, which is the contract the section relies on to stay usable.
+    /// </summary>
+    private sealed class HangingAuthenticationService : IMicrosoftAuthenticationService
+    {
+        public AuthenticationState State { get; set; } = AuthenticationState.Authenticating;
+
+        public AuthenticatedAccount? CurrentAccount { get; set; }
+
+        public Task<ProviderResult<AuthenticatedAccount>> TryAcquireSilentAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(ProviderResult<AuthenticatedAccount>.Failed(
+                OperationError.Create(FailureCategory.Authentication, "No account.")));
+
+        public async Task<ProviderResult<AuthenticatedAccount>> SignInAsync(IntPtr ownerWindowHandle, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        public Task SignOutAsync(CancellationToken cancellationToken)
+        {
+            CurrentAccount = null;
+            State = AuthenticationState.SignedOut;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FixedClock : IClock

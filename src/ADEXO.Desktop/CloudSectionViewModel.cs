@@ -25,8 +25,10 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     private readonly RelayCommand _signInCommand;
     private readonly RelayCommand _signOutCommand;
     private readonly RelayCommand _refreshCommand;
+    private readonly RelayCommand _cancelCommand;
     private readonly Func<byte[]?> _consistencyGuidProvider = () => null;
     private readonly Func<AdCorrelationSubject?>? _subjectProvider;
+    private CancellationTokenSource? _attemptCancellation;
 
     private CloudSectionState _state = CloudSectionState.NotConfigured;
     private string _message = "Microsoft 365 is not configured.";
@@ -41,6 +43,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _signInCommand = new RelayCommand(() => { }, () => false);
         _signOutCommand = new RelayCommand(() => { }, () => false);
         _refreshCommand = new RelayCommand(() => { }, () => false);
+        _cancelCommand = new RelayCommand(() => { }, () => false);
     }
 
     /// <summary>
@@ -78,6 +81,11 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _signOutCommand = new RelayCommand(
             async () => await SignOutAsync().ConfigureAwait(true),
             () => !_busy && _account is not null);
+
+        // A sign-in can wait indefinitely on a browser window the operator has since closed. Without a
+        // way to abandon it, every command stays disabled and the application has to be killed, so the
+        // cancel command is available exactly while an attempt is in flight.
+        _cancelCommand = new RelayCommand(CancelAttempt, () => _busy);
 
         _refreshCommand = new RelayCommand(
             async () => await RefreshAsync(subjectProvider()).ConfigureAwait(true),
@@ -117,6 +125,9 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
     public ICommand SignOutCommand => _signOutCommand;
 
     public ICommand RefreshCommand => _refreshCommand;
+
+    /// <summary>Abandons an in-flight sign-in. Available only while one is running.</summary>
+    public ICommand CancelCommand => _cancelCommand;
 
     public CloudSectionState State
     {
@@ -219,9 +230,14 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         using var watchdog = new AuthenticationWatchdog(this);
         watchdog.Start();
 
+        // A token lets the operator abandon an attempt that will never complete, such as a browser
+        // window they have closed.
+        using var attemptCancellation = new CancellationTokenSource();
+        _attemptCancellation = attemptCancellation;
+
         try
         {
-            var signIn = await _authentication.SignInAsync(ownerWindowHandle, CancellationToken.None).ConfigureAwait(true);
+            var signIn = await _authentication.SignInAsync(ownerWindowHandle, attemptCancellation.Token).ConfigureAwait(true);
 
             if (signIn.IsCanceled)
             {
@@ -239,7 +255,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             _account = signIn.Value;
             Message = DescribeMethod();
 
-            var (tenant, result) = await _session.EstablishTenantAsync(CancellationToken.None).ConfigureAwait(true);
+            var (tenant, result) = await _session.EstablishTenantAsync(attemptCancellation.Token).ConfigureAwait(true);
             _tenant = tenant;
             Apply(result);
 
@@ -249,17 +265,60 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
             if (result.State == CloudSectionState.TenantVerified && _subjectProvider?.Invoke() is { } subject)
             {
                 var correlated = await _session
-                    .CorrelateAsync(subject, tenant!, _consistencyGuidProvider(), CancellationToken.None)
+                    .CorrelateAsync(subject, tenant!, _consistencyGuidProvider(), attemptCancellation.Token)
                     .ConfigureAwait(true);
-                var resolved = await _session.ResolveLicensesAsync(correlated, CancellationToken.None).ConfigureAwait(true);
+                var resolved = await _session.ResolveLicensesAsync(correlated, attemptCancellation.Token).ConfigureAwait(true);
                 Apply(resolved);
             }
         }
+        catch (OperationCanceledException)
+        {
+            // The operator abandoned the attempt, or closed the browser window. That is an ordinary way
+            // to stop, not a failure, and it must leave the section usable rather than showing an error.
+            State = CloudSectionState.Canceled;
+            Message = "The sign-in was canceled. Active Directory data is unaffected.";
+            ReportCancellation();
+        }
         finally
         {
+            _attemptCancellation = null;
             watchdog.Stop();
             SetBusy(false);
         }
+    }
+
+    /// <summary>
+    /// Abandons the in-flight sign-in. The operator closing a browser window is an ordinary way to stop,
+    /// and it must leave the application usable rather than with every command disabled.
+    /// </summary>
+    public void CancelAttempt()
+    {
+        if (_attemptCancellation is not { } cancellation || cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The attempt completed between the check and the cancel; there is nothing left to stop.
+            return;
+        }
+
+        State = CloudSectionState.Canceled;
+        Message = "The sign-in was canceled. Active Directory data is unaffected.";
+        ReportCancellation();
+    }
+
+    private void ReportCancellation()
+    {
+        LastResult = null;
+        _user = null;
+        _correlationSummary = null;
+        ResultChanged?.Invoke(this, null);
     }
 
     public async Task SignOutAsync()
@@ -523,6 +582,7 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         _signInCommand.RaiseCanExecuteChanged();
         _signOutCommand.RaiseCanExecuteChanged();
         _refreshCommand.RaiseCanExecuteChanged();
+        _cancelCommand.RaiseCanExecuteChanged();
     }
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
