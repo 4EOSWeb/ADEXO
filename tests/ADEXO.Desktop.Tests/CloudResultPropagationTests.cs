@@ -161,6 +161,41 @@ public sealed class CloudResultPropagationTests
     }
 
     [Fact]
+    public async Task The_copyable_diagnostics_name_the_authentication_method()
+    {
+        // The copied report is what a support case receives. A session produced through the browser
+        // fallback must not be indistinguishable from a brokered one, because their security properties
+        // differ.
+        var (model, cloud, _) = Build();
+
+        await cloud.SignInAsync(IntPtr.Zero);
+        var report = model.BuildDiagnostics(includeSensitive: false);
+
+        Assert.Contains("Authentication preferred:", report, StringComparison.Ordinal);
+        Assert.Contains("Authentication actual:", report, StringComparison.Ordinal);
+        Assert.Contains("Authentication fallback reason:", report, StringComparison.Ordinal);
+        Assert.Contains("Authentication broker elapsed:", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_copyable_diagnostics_never_contain_token_material()
+    {
+        var (model, cloud, _) = Build();
+
+        await cloud.SignInAsync(IntPtr.Zero);
+
+        foreach (var sensitive in new[] { false, true })
+        {
+            var report = model.BuildDiagnostics(sensitive);
+            Assert.DoesNotContain("eyJ", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("Bearer ", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("refresh_token", report, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("access_token", report, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("client_secret", report, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public async Task Cancelling_an_in_flight_sign_in_leaves_every_command_usable_again()
     {
         // The live defect: an operator closed the browser window, the sign-in never returned, and every

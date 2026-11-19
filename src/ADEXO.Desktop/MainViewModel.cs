@@ -286,6 +286,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         builder.AppendLine("Provider: " + ProviderStatus);
         builder.AppendLine("Elapsed: " + Elapsed);
         builder.AppendLine("Attributes: objectGUID, distinguishedName, objectClass, account, contact, organization, mail metadata");
+
+        // The authentication method belongs in the artefact an administrator copies into a support case.
+        // Without it, a session produced through the browser fallback is indistinguishable from a brokered
+        // one, and the security properties of the session cannot be established from the report.
+        builder.AppendLine("Authentication preferred: " + Cloud.PreferredMethodText);
+        builder.AppendLine("Authentication actual: " + Cloud.ActualMethodText);
+        builder.AppendLine("Authentication fallback reason: " + Cloud.FallbackReasonText);
+        builder.AppendLine("Authentication broker elapsed: " + Cloud.BrokerElapsedText);
+        builder.AppendLine("Cloud correlation: " + Product.CorrelationState);
+        builder.AppendLine("Exchange Online: " + Product.ExchangeConnectionText);
+
         if (includeSensitive && User is not null)
         {
             builder.AppendLine("Sensitive directory identifiers:");
