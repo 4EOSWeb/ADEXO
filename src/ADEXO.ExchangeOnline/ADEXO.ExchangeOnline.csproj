@@ -6,4 +6,8 @@
   <ItemGroup>
     <ProjectReference Include="..\ADEXO.Core\ADEXO.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Hosts Exchange Online PowerShell in an isolated runspace. No console, no arbitrary script. -->
+    <PackageReference Include="Microsoft.PowerShell.SDK" />
+  </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 using ADEXO.Contracts.Authentication;
 using ADEXO.Contracts.Configuration;
 using ADEXO.Contracts.Time;
+using ADEXO.ExchangeOnline;
 using ADEXO.Graph;
 using ADEXO.Graph.Authentication;
 using ADEXO.Graph.Orchestration;
@@ -18,10 +19,12 @@ namespace ADEXO.Infrastructure.Cloud;
 /// <param name="Authentication">The interactive authentication service.</param>
 /// <param name="Session">The ordered tenant-lock and correlation pipeline.</param>
 /// <param name="TenantId">The approved tenant the session locks to.</param>
+/// <param name="Mailboxes">The read-only Exchange mailbox provider, when Exchange is composed.</param>
 public sealed record CloudComponents(
     IMicrosoftAuthenticationService Authentication,
     CloudReadSession Session,
-    Guid TenantId);
+    Guid TenantId,
+    Contracts.Mailbox.IMailboxProvider? Mailboxes = null);
 
 /// <summary>
 /// Composes the Microsoft 365 pieces from non-secret configuration.
@@ -65,9 +68,13 @@ public static class CloudSectionFactory
         var provider = new GraphCloudProvider(new GraphReadClient(graphClient), clock);
         var session = new CloudReadSession(authentication, provider, configuration.TenantId);
 
-        return (new CloudComponents(authentication, session, configuration.TenantId), null);
-    }
+        // Exchange is composed but not connected. Connection is an explicit administrator action, so the
+        // provider exists without a live session and reports itself as not connected until one is made.
+        var exchangeRunspace = ExchangeRunspace.Create();
+        var mailboxes = new ExchangeMailboxProvider(new ExchangeRunspaceInvoker(exchangeRunspace), clock);
 
+        return (new CloudComponents(authentication, session, configuration.TenantId, mailboxes), null);
+    }
     /// <summary>
     /// Builds the Graph request adapter from the public client. The auth provider is ours, so the token
     /// path is the MSAL public client and not a credential chain.

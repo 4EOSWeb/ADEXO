@@ -70,6 +70,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public CloudSectionViewModel Cloud { get; private set; } = new();
 
     /// <summary>
+    /// The seven read-only product sections. Populated from the AD load and the cloud reads, and rebuilt
+    /// whenever either changes.
+    /// </summary>
+    public ProductViewModel Product { get; private set; } = new();
+
+    /// <summary>
     /// Attaches the configured cloud section. Called once by the composition root after the window
     /// exists, so the broker dialog can be parented to a real handle.
     /// </summary>
@@ -78,6 +84,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(cloud);
         Cloud = cloud;
         OnPropertyChanged(nameof(Cloud));
+    }
+
+    /// <summary>
+    /// Attaches the product shell. The shell keeps its own sections, so AD data stays readable while the
+    /// cloud and Exchange providers are signed out, failing, or unavailable.
+    /// </summary>
+    public void AttachProduct(ProductViewModel product)
+    {
+        ArgumentNullException.ThrowIfNull(product);
+        Product = product;
+        OnPropertyChanged(nameof(Product));
+        Product.Rebuild(User, null);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

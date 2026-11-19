@@ -161,6 +161,52 @@ public sealed class GraphCloudProvider : IGraphProvider
             LicenseCatalogueResolved = true,
         };
     }
+
+    /// <summary>
+    /// Resolves licences through the shared resolver, so the display rules live in one place.
+    /// </summary>
+    public async Task<CloudDirectoryUser> ResolveLicensesViaCatalogueAsync(CloudDirectoryUser user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (user.Licenses.Count == 0)
+        {
+            return user;
+        }
+
+        var skus = await GetSubscribedSkusAsync(cancellationToken).ConfigureAwait(false);
+        var catalogue = skus.IsSuccess && skus.Value is not null
+            ? Core.Licensing.LicenseResolver.Index(skus.Value)
+            : null;
+
+        var (licenses, resolved) = Core.Licensing.LicenseResolver.Resolve(
+            user.Licenses.Select(license => license.SkuId).ToList(),
+            catalogue);
+
+        return CopyWithLicenses(user, licenses, resolved);
+    }
+
+    private static CloudDirectoryUser CopyWithLicenses(
+        CloudDirectoryUser user,
+        IReadOnlyList<CloudLicenseAssignment> licenses,
+        bool resolved) => new()
+        {
+            EntraObjectId = user.EntraObjectId,
+            DisplayName = user.DisplayName,
+            UserPrincipalName = user.UserPrincipalName,
+            Mail = user.Mail,
+            AccountEnabled = user.AccountEnabled,
+            UsageLocation = user.UsageLocation,
+            OnPremisesSyncEnabled = user.OnPremisesSyncEnabled,
+            OnPremisesLastSyncDateTime = user.OnPremisesLastSyncDateTime,
+            OnPremisesImmutableId = user.OnPremisesImmutableId,
+            OnPremisesDistinguishedName = user.OnPremisesDistinguishedName,
+            OnPremisesSecurityIdentifier = user.OnPremisesSecurityIdentifier,
+            OnPremisesSamAccountName = user.OnPremisesSamAccountName,
+            ProxyAddresses = user.ProxyAddresses,
+            Licenses = licenses,
+            LicenseCatalogueResolved = resolved,
+        };
 }
 
 /// <summary>
