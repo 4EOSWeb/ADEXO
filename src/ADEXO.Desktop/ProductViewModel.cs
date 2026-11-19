@@ -64,6 +64,7 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         // them. Without this the tabs keep the state they had at construction, which reads as a
         // completed sign-in having done nothing.
         _cloud.ResultChanged += OnCloudResultChanged;
+        _cloud.MethodChanged += OnCloudMethodChanged;
 
         ConnectExchangeCommand = new RelayCommand(
             async () => await ConnectExchangeAsync().ConfigureAwait(true),
@@ -89,6 +90,12 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         Rebuild(_lastAdUser, result, _cloud?.Message);
         RefreshDiagnostics();
     }
+
+    /// <summary>
+    /// Rebuilds only the diagnostics when the method changes, because the cloud result and the sections
+    /// derived from it have not changed.
+    /// </summary>
+    private void OnCloudMethodChanged(object? sender, EventArgs e) => RefreshDiagnostics();
 
     private VerifiedDirectoryUser? _lastAdUser;
 

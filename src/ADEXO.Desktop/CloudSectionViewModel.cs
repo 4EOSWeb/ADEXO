@@ -105,8 +105,20 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
         }
     }
 
-    private void OnBrowserFallbackStarting(object? sender, FallbackReason reason) =>
+    private void OnBrowserFallbackStarting(object? sender, FallbackReason reason)
+    {
         ReportBrowserFallback();
+
+        // The diagnostics are the evidence an administrator reads while the browser is open, so they are
+        // refreshed at the moment the fallback is decided rather than only after the attempt resolves.
+        MethodChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Raised when the authentication method or fallback reason changes without a new cloud result, such
+    /// as when the browser fallback begins. Diagnostics rebuild from it.
+    /// </summary>
+    public event EventHandler? MethodChanged;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
