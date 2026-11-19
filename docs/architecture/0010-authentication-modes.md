@@ -1,0 +1,172 @@
+# Phase 3 authentication: WAM primary with a bounded browser fallback
+
+Status: implemented. This note records the decision, the trade-off, and what was actually observed.
+
+## What the lab established
+
+The isolated WPF harness authenticated interactively through the Windows broker once, and the product
+authenticated through its cached session with T1 and T2 passing. Later broker attempts on the same host
+stopped producing usable interactive UI, and a clean reboot did not restore it.
+
+During Phase 3 live validation the broker behaved intermittently on the same host, in the same session,
+with the same configuration: some attempts surfaced no interactive surface at all and the bounded fallback
+ran to completion, while one attempt surfaced UI after roughly 15.6 seconds and **authenticated the full
+product through the broker from a cold start**, passing T1, T2, and correlation, then signing out cleanly.
+Both outcomes are reproduced in this note deliberately, because they are the reason the fallback is bounded
+by observed UI rather than by elapsed time.
+
+The precise statement, which matters:
+
+> An available WAM broker does not guarantee usable interactive broker UI in every Windows host or
+> session.
+
+It is **not** accurate to say that a missing primary refresh token makes WAM fail. This project's own
+harness authenticated through the broker on a device reporting `AzureAdPrt: NO`, which disproves that
+explanation. The broker was present and healthy throughout; what failed was the surfacing of its
+interactive surface.
+
+The intermittent success also shows why the window must not be an authentication deadline. An attempt that
+surfaces UI at 15.6 seconds is a legitimate broker sign-in and must not be abandoned; an attempt that
+surfaces nothing after 20 seconds is the condition the fallback exists for. The window measures absence of
+UI, never the operator's pace.
+
+## Decision
+
+`AuthenticationMode.Auto` is the default:
+
+1. Attempt silent authentication from a cached account.
+2. If interaction is required, start the Windows broker.
+3. Observe the broker for **20 seconds**.
+4. If the broker's interactive UI does not surface, or the broker fails to activate, retire that attempt
+   and continue in the system browser.
+5. Apply T1, then T2, exactly as before.
+
+`WamOnly` and `SystemBrowserOnly` are also supported. `WamOnly` never launches a browser and reports its
+failure honestly; it is for organizations that require broker-only authentication. `SystemBrowserOnly`
+skips the broker entirely and exists so the browser path can be observed in isolation.
+
+## The 20 seconds is not an authentication deadline
+
+It detects the absence of usable broker UI. Once the broker's UI has surfaced, or the broker reports
+that interaction is active, the window stops applying. An administrator may take as long as the identity
+platform needs for account selection, credentials, MFA, Conditional Access, or a password reset, and no
+fallback occurs.
+
+`BrokerSurfacingProbe` enforces this, and a test covers a UI that surfaces after the window would have
+expired. It does so by consulting an `IBrokerSurfaceDetector` rather than inferring from timing alone: the
+window measures *absence of broker UI*, never the operator's pace.
+
+## Both paths share the same identity rules
+
+| | Windows broker | System browser |
+| --- | --- | --- |
+| Client identifier | same | same |
+| Authority | single tenant | single tenant |
+| Scopes | `User.Read`, `User.Read.All`, `Organization.Read.All` | same |
+| Redirect | broker-managed | `http://localhost` (MSAL loopback) |
+| T1 token tenant check | required | required |
+| T2 `/organization` check | required | required |
+| Secret or certificate | none | none |
+
+The browser path uses MSAL's own authorization code flow with PKCE. No code verifier, challenge, or
+token exchange is implemented in this repository, and tests assert that no such code exists.
+
+## Configuration
+
+The mode is selected in the non-secret configuration document beside the executable:
+
+```json
+{
+  "tenantId": "c18ee4be-07a0-4da1-9ddf-c3ebe9bae0af",
+  "clientId": "5f7f5441-87d9-4fe5-96f2-8a2492c79db7",
+  "authenticationMode": "Auto"
+}
+```
+
+`authenticationMode` accepts `Auto`, `WamOnly`, or `SystemBrowserOnly`, case-insensitively. An absent or
+unrecognized value resolves to `Auto`; a typo in a mode name must not lock an administrator out. The
+document remains identifiers-only: the loader still refuses any property whose name suggests a secret.
+
+## How "UI surfaced" is decided
+
+`BrokerSurfacingProbe` consults `IBrokerSurfaceDetector` while the window is open. The production
+detector, `BrokerWindowDetector`, reports broker UI when either of these is true:
+
+- a visible top-level window owned by the ADEXO parent window the broker was given, and owned by a
+  **different** process (a window ADEXO itself owns is never broker UI, and counting it would suppress
+  the fallback); or
+- a visible window owned by one of the processes that host the account manager's surface.
+
+Detection is best effort, and a missing signal is read as "not surfaced": that is the conservative
+direction for a fallback that exists precisely because a healthy broker can produce no UI. A late broker
+result cannot matter, because the attempt is retired before the browser starts.
+
+Both directions were observed live. A false positive is the worse failure of the two, because it
+suppresses the fallback and leaves the operator waiting with no browser at all; an early live run did
+exactly that before ADEXO's own owned windows were excluded.
+
+## Accepted trade-off
+
+The browser path does **not** carry the same device-bound guarantees as the broker.
+
+| Property | Broker | System browser |
+| --- | --- | --- |
+| User MFA and user-based Conditional Access | Yes | Yes |
+| Device-based Conditional Access | Yes | Not claimed |
+| Windows Hello / FIDO through the broker | Yes | Not claimed |
+| Token protection (device binding) | Yes | Not claimed |
+
+Mitigations:
+
+- The broker remains preferred and is always attempted first in `Auto`.
+- `WamOnly` is available where broker-only is a requirement.
+- The two flows never run as simultaneous active sessions; the broker attempt is retired before the
+  browser starts, and an attempt generation prevents a late broker result from replacing a browser
+  result.
+- T1 and T2 are mandatory on both paths; there is no exception.
+- Conditional Access is never bypassed. If the tenant requires a device-based control the browser path
+  cannot satisfy, authentication fails and the real policy error is displayed.
+
+## Validation status
+
+Recorded precisely, because the two paths were not proven to the same depth. See
+[Phase 3 lab limitations](../testing/phase-3-lab-limitations.md) for the full record.
+
+| Aspect | Windows broker | System browser |
+| --- | --- | --- |
+| Launch and redirect mechanics | Proven live | **Proven live** |
+| Interactive authentication completed | **Proven live** | **Not proven live** |
+| T1 | **Proven live** | Automated test coverage only |
+| T2 | **Proven live** | Automated test coverage only |
+| Correlation, `subscribedSkus` | **Proven live** (correlation; `Unmatched`) | Automated test coverage only |
+| Sign-out | **Proven live** | Automated test coverage only |
+
+The browser path's T1 and T2 are the same code as the broker path's and are covered by deterministic
+tests that drive the real authentication service and the real session pipeline. That is not presented as
+a live observation.
+
+**System-browser authentication: PARTIALLY VALIDATED.** A complete live browser session requiring
+operator credential interaction remains a final pre-release validation item. It is a known validation
+gap rather than a product defect, and it does not block further design work.
+
+## Deployment note
+
+ADEXO should run non-elevated. The broker path requires a normal interactive session, and the product
+does not need elevation for any Phase 3 operation.
+
+### Sign-in can always be abandoned
+
+A browser window the operator closes leaves the identity library waiting indefinitely. The cloud section
+therefore runs each interactive attempt under its own cancellation token and exposes a **Cancel sign-in**
+command, enabled only while an attempt is in flight. Cancellation is an ordinary outcome: the section
+reports `Canceled`, states that Active Directory is unaffected, clears any stale cloud state from the
+tabs, and returns every command to a usable state. Without this, the only way out of a hung sign-in was
+to kill the process.
+
+### What the copied diagnostics must contain
+
+`Copy diagnostics` is the artefact an administrator sends to support, so it carries the preferred
+method, the actual method, the fallback reason, the elapsed broker time, the cloud correlation state, and
+the Exchange connection state. A session produced through the browser fallback must never be
+indistinguishable from a brokered one, because their security properties differ. It contains no token,
+bearer value, refresh token, or secret.
