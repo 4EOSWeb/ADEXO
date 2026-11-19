@@ -119,6 +119,12 @@ public sealed class CloudSectionViewModel : INotifyPropertyChanged
 
     /// <summary>True when a cloud user may be presented as belonging to the selected AD object.</summary>
     public bool ShowUserData => State == CloudSectionState.Verified && _user is not null;
+
+    /// <summary>
+    /// The verified Entra object identifier, or null. This is the only value a downstream provider may
+    /// use to resolve a cloud-side object, and it is null unless correlation is Verified.
+    /// </summary>
+    public Guid? VerifiedEntraObjectId => _user?.EntraObjectId;
     public string? EntraObjectId => ShowUserData ? _user!.EntraObjectId.ToString("D") : null;
 
     public string? CloudUserPrincipalName => ShowUserData ? _user!.UserPrincipalName : null;

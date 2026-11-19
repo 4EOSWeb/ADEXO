@@ -42,6 +42,8 @@
 
         <!-- Converts a DetailSeverity to a brush, so the view model stays UI-free. -->
         <local:SeverityBrushConverter x:Key="SeverityBrush" />
+        <local:BoolToVisibleConverter x:Key="BoolToVisible" />
+        <local:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
 
         <!-- Renders one DetailGroup as a titled block of label/value rows. -->
         <DataTemplate x:Key="DetailGroupTemplate">
@@ -114,11 +116,23 @@
             <Button Content="Refresh AD" Command="{Binding RefreshCommand}" />
             <Button Content="Sign in to Microsoft 365" Command="{Binding Cloud.SignInCommand}" Click="SignInCloud" />
             <Button Content="Refresh Microsoft 365" Command="{Binding Cloud.RefreshCommand}" />
+            <Button Content="Connect Exchange Online" Command="{Binding Product.ConnectExchangeCommand}" />
+            <Button Content="Disconnect Exchange" Command="{Binding Product.DisconnectExchangeCommand}" />
             <Button Content="Refresh mailbox" Command="{Binding Product.RefreshAllCommand}" />
             <Button Content="Sign out" Command="{Binding Cloud.SignOutCommand}" />
             <Button Content="Copy diagnostics" Command="{Binding CopyDiagnosticsCommand}" Click="CopyDefault" />
             <Button Content="Close" Click="CloseClick" />
         </StackPanel>
+
+        <!-- Provider status strip -->
+        <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="10,6" Background="#F2F2F2">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Exchange Online:" FontWeight="SemiBold" Margin="0,0,6,0" />
+                <TextBlock Text="{Binding Product.ExchangeConnectionText}" />
+                <TextBlock Text="{Binding Product.ExchangeOrganization}" Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0" />
+                <TextBlock Text="{Binding Product.CorrelationState, StringFormat=      Cloud correlation: {0}}" Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+        </Border>
 
         <!-- Sections -->
         <TabControl Margin="0,12,0,0" Background="{StaticResource PanelBrush}">

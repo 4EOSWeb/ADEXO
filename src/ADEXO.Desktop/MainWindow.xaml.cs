@@ -12,11 +12,8 @@ public partial class MainWindow : Window
     {
         _model = model;
 
-        // Converter resources referenced by the templates are created here so the XAML stays declarative.
-        Resources["SeverityBrush"] = new SeverityBrushConverter();
-        Resources["BoolToVisible"] = new BoolToVisibleConverter();
-        Resources["EmptyToCollapsed"] = new EmptyToCollapsedConverter();
-
+        // Converters are declared in MainWindow.xaml's Window.Resources. They are deliberately not
+        // created here as well: adding the same key twice throws during InitializeComponent.
         InitializeComponent();
         DataContext = model;
     }

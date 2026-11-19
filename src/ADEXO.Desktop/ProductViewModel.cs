@@ -28,6 +28,10 @@ public sealed class ProductViewModel : INotifyPropertyChanged
     private MailboxUsage? _usage;
     private DelegationReadResult? _delegation;
     private string _correlationState = "Not evaluated";
+    private readonly bool _hasExchangeProvider;
+    private readonly Func<ExchangeOnline.IExchangeConnectionService>? _connectionService;
+    private ExchangeOnline.ExchangeConnectionState _exchangeConnectionState = ExchangeOnline.ExchangeConnectionState.Disconnected;
+    private bool _exchangeBusy;
 
     public ProductViewModel()
     {
@@ -43,13 +47,26 @@ public sealed class ProductViewModel : INotifyPropertyChanged
     public ProductViewModel(
         CloudSectionViewModel cloud,
         IMailboxProvider? mailboxes,
-        Func<Guid?> verifiedEntraObjectId)
+        Func<Guid?> verifiedEntraObjectId,
+        string? exchangeOrganization = null,
+        Func<ExchangeOnline.IExchangeConnectionService>? connectionService = null)
         : this()
     {
         _cloud = cloud ?? throw new ArgumentNullException(nameof(cloud));
         _mailboxes = mailboxes;
         ArgumentNullException.ThrowIfNull(verifiedEntraObjectId);
         VerifiedEntraObjectId = verifiedEntraObjectId;
+        ExchangeOrganization = exchangeOrganization;
+        _connectionService = connectionService;
+        _hasExchangeProvider = mailboxes is not null;
+
+        ConnectExchangeCommand = new RelayCommand(
+            async () => await ConnectExchangeAsync().ConfigureAwait(true),
+            () => _hasExchangeProvider && !_exchangeBusy && ExchangeConnectionState != ExchangeOnline.ExchangeConnectionState.Connected);
+
+        DisconnectExchangeCommand = new RelayCommand(
+            async () => await DisconnectExchangeAsync().ConfigureAwait(true),
+            () => _hasExchangeProvider && !_exchangeBusy && ExchangeConnectionState == ExchangeOnline.ExchangeConnectionState.Connected);
 
         RefreshAllCommand = new RelayCommand(
             async () => await RefreshMailboxAsync().ConfigureAwait(true),
@@ -73,6 +90,107 @@ public sealed class ProductViewModel : INotifyPropertyChanged
     public DetailSectionViewModel Diagnostics { get; }
 
     public ICommand? RefreshAllCommand { get; }
+
+    /// <summary>Connects Exchange Online interactively. Never runs automatically at startup.</summary>
+    public ICommand? ConnectExchangeCommand { get; }
+
+    public ICommand? DisconnectExchangeCommand { get; }
+
+    /// <summary>The Exchange organization to connect to, shown in the UI.</summary>
+    public string? ExchangeOrganization { get; }
+
+    public ExchangeOnline.ExchangeConnectionState ExchangeConnectionState
+    {
+        get => _exchangeConnectionState;
+        private set
+        {
+            if (Set(ref _exchangeConnectionState, value))
+            {
+                OnPropertyChanged(nameof(ExchangeConnectionText));
+                RaiseExchangeCommandState();
+            }
+        }
+    }
+
+    /// <summary>A single readable line for the connection state, used in the UI and diagnostics.</summary>
+    public string ExchangeConnectionText => ExchangeConnectionState switch
+    {
+        ExchangeOnline.ExchangeConnectionState.Connected => "Connected",
+        ExchangeOnline.ExchangeConnectionState.Connecting => "Connecting…",
+        ExchangeOnline.ExchangeConnectionState.AccessDenied => "Access denied",
+        ExchangeOnline.ExchangeConnectionState.AuthenticationFailed => "Authentication failed",
+        ExchangeOnline.ExchangeConnectionState.ModuleUnavailable => "Exchange module unavailable",
+        ExchangeOnline.ExchangeConnectionState.Failed => "Connection failed",
+        _ => "Disconnected",
+    };
+
+    public async Task ConnectExchangeAsync()
+    {
+        if (_connectionService is null || string.IsNullOrWhiteSpace(ExchangeOrganization) || _exchangeBusy)
+        {
+            return;
+        }
+
+        _exchangeBusy = true;
+        ExchangeConnectionState = ExchangeOnline.ExchangeConnectionState.Connecting;
+        RaiseExchangeCommandState();
+
+        try
+        {
+            var service = _connectionService();
+            ExchangeConnectionState = await service.ConnectAsync(ExchangeOrganization!, CancellationToken.None).ConfigureAwait(true);
+
+            if (ExchangeConnectionState == ExchangeOnline.ExchangeConnectionState.Connected)
+            {
+                // Only now can a mailbox be read, and only for a verified identity.
+                await RefreshMailboxAsync().ConfigureAwait(true);
+            }
+            else
+            {
+                SectionMessage = $"Exchange Online: {ExchangeConnectionText}.";
+            }
+        }
+        finally
+        {
+            _exchangeBusy = false;
+            RaiseExchangeCommandState();
+        }
+    }
+
+    public async Task DisconnectExchangeAsync()
+    {
+        if (_connectionService is null || _exchangeBusy)
+        {
+            return;
+        }
+
+        _exchangeBusy = true;
+        RaiseExchangeCommandState();
+
+        try
+        {
+            await _connectionService().DisconnectAsync(CancellationToken.None).ConfigureAwait(true);
+            ExchangeConnectionState = ExchangeOnline.ExchangeConnectionState.Disconnected;
+
+            _mailbox = null;
+            _usage = null;
+            _delegation = null;
+            ProductSections.BuildMailbox(Mailbox, null, null);
+            ProductSections.BuildEmailAddresses(EmailAddresses, null);
+            ProductSections.BuildDelegation(Delegation, null);
+        }
+        finally
+        {
+            _exchangeBusy = false;
+            RaiseExchangeCommandState();
+        }
+    }
+
+    private void RaiseExchangeCommandState()
+    {
+        (ConnectExchangeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (DisconnectExchangeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+    }
 
     /// <summary>Supplies the Entra object identifier only when correlation is verified. Null otherwise.</summary>
     public Func<Guid?>? VerifiedEntraObjectId { get; }
@@ -263,9 +381,18 @@ public sealed class ProductViewModel : INotifyPropertyChanged
         _ => result.State.ToString(),
     };
 
-    private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        OnPropertyChanged(name);
+        return true;
     }
+
+    private void OnPropertyChanged(string? name) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

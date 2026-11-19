@@ -86,6 +86,7 @@ public sealed class ExchangeRunspace : IDisposable
 {
     private readonly Runspace _runspace;
     private bool _disposed;
+    private bool _moduleLoaded;
 
     public ExchangeRunspace(Runspace runspace) =>
         _runspace = runspace ?? throw new ArgumentNullException(nameof(runspace));
@@ -160,12 +161,17 @@ public sealed class ExchangeRunspace : IDisposable
     }
 
     /// <summary>
-    /// Imports the Exchange module and connects interactively. The administrator authenticates through
-    /// Microsoft's modern sign-in; no password, secret, or certificate is supplied by ADEXO.
+    /// Imports the Exchange module once. A failure here is a module availability problem, not an
+    /// authentication problem, and is reported as such.
     /// </summary>
-    public Task<ProviderResult<bool>> ConnectInteractiveAsync(string organization, CancellationToken cancellationToken)
+    public Task<ProviderResult<bool>> EnsureModuleAsync(CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(organization);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_moduleLoaded)
+        {
+            return Task.FromResult(ProviderResult<bool>.Success(true));
+        }
 
         using var powershell = PowerShell.Create();
         powershell.Runspace = _runspace;
@@ -177,18 +183,69 @@ public sealed class ExchangeRunspace : IDisposable
         try
         {
             powershell.Invoke();
+
             if (powershell.HadErrors && powershell.Streams.Error.Count > 0)
             {
-                return Task.FromResult(ProviderResult<bool>.Failed(
-                    OperationError.Create(FailureCategory.ProviderUnavailable, "The Exchange Online module could not be loaded.")));
+                var detail = powershell.Streams.Error[0].Exception?.GetType().Name ?? "Error";
+                return Task.FromResult(ProviderResult<bool>.Failed(OperationError.Create(
+                    FailureCategory.ProviderUnavailable,
+                    $"The Exchange Online module could not be loaded ({detail}).")));
             }
 
-            powershell.Commands.Clear();
-            powershell.Commands.AddCommand(ExchangeReadCommands.Connect)
-                .AddParameter("Organization", organization)
-                .AddParameter("ShowBanner", false)
-                .AddParameter("ErrorAction", "Stop");
+            _moduleLoaded = true;
+            return Task.FromResult(ProviderResult<bool>.Success(true));
+        }
+        catch (Exception exception)
+        {
+            return Task.FromResult(ProviderResult<bool>.Failed(OperationError.Create(
+                FailureCategory.ProviderUnavailable,
+                $"The Exchange Online module could not be loaded ({exception.GetType().Name}).")));
+        }
+    }
 
+    /// <summary>Ends the Exchange session. The runspace stays open so a later connect can reuse it.</summary>
+    public void Disconnect()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            using var powershell = PowerShell.Create();
+            powershell.Runspace = _runspace;
+            powershell.Commands.AddCommand(ExchangeReadCommands.Disconnect)
+                .AddParameter("Confirm", false)
+                .AddParameter("ErrorAction", "SilentlyContinue");
+            powershell.Invoke();
+        }
+        catch
+        {
+            // Disconnect is best-effort; the state is cleared regardless.
+        }
+
+        IsConnected = false;
+    }
+
+    /// <summary>
+    /// Imports the Exchange module and connects interactively. The administrator authenticates through
+    /// Microsoft's modern sign-in; no password, secret, or certificate is supplied by ADEXO.
+    /// </summary>
+    public Task<ProviderResult<bool>> ConnectInteractiveAsync(string organization, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(organization);
+
+        using var powershell = PowerShell.Create();
+        powershell.Runspace = _runspace;
+
+        powershell.Commands.AddCommand(ExchangeReadCommands.Connect)
+            .AddParameter("Organization", organization)
+            .AddParameter("ShowBanner", false)
+            .AddParameter("ErrorAction", "Stop");
+
+        try
+        {
             powershell.Invoke();
 
             if (powershell.HadErrors && powershell.Streams.Error.Count > 0)

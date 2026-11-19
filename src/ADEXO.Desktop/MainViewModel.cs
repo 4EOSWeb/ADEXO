@@ -269,6 +269,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ProviderStatus = "Read-only";
         Status = result.Value.DisplayName ?? result.Value.SamAccountName ?? "User";
         State = ReadOnlyViewState.Loaded;
+
+        // The product sections are derived from the AD user, so they must be rebuilt when it loads or
+        // changes. Without this the tabs would keep showing their empty state.
+        Product.Rebuild(User, null);
     }
 
     public string BuildDiagnostics(bool includeSensitive)

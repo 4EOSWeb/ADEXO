@@ -20,11 +20,13 @@ namespace ADEXO.Infrastructure.Cloud;
 /// <param name="Session">The ordered tenant-lock and correlation pipeline.</param>
 /// <param name="TenantId">The approved tenant the session locks to.</param>
 /// <param name="Mailboxes">The read-only Exchange mailbox provider, when Exchange is composed.</param>
+/// <param name="ExchangeOrganization">The organization used for the Exchange connection, when known.</param>
 public sealed record CloudComponents(
     IMicrosoftAuthenticationService Authentication,
     CloudReadSession Session,
     Guid TenantId,
-    Contracts.Mailbox.IMailboxProvider? Mailboxes = null);
+    Contracts.Mailbox.IMailboxProvider? Mailboxes = null,
+    string? ExchangeOrganization = null);
 
 /// <summary>
 /// Composes the Microsoft 365 pieces from non-secret configuration.
@@ -73,7 +75,12 @@ public static class CloudSectionFactory
         var exchangeRunspace = ExchangeRunspace.Create();
         var mailboxes = new ExchangeMailboxProvider(new ExchangeRunspaceInvoker(exchangeRunspace), clock);
 
-        return (new CloudComponents(authentication, session, configuration.TenantId, mailboxes), null);
+        return (new CloudComponents(
+            authentication,
+            session,
+            configuration.TenantId,
+            mailboxes,
+            ExchangeOrganization: null), null);
     }
     /// <summary>
     /// Builds the Graph request adapter from the public client. The auth provider is ours, so the token

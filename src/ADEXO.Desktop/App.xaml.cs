@@ -32,6 +32,14 @@ public partial class App : Application
                 () => BuildSubject(model),
                 () => new System.Windows.Interop.WindowInteropHelper(window).Handle,
                 () => model.User?.ConsistencyGuid));
+
+            // The product shell owns the seven sections. Exchange is composed but stays disconnected
+            // until an administrator explicitly connects.
+            model.AttachProduct(new ProductViewModel(
+                model.Cloud,
+                components.Mailboxes,
+                () => model.Cloud.VerifiedEntraObjectId,
+                exchangeOrganization: components.ExchangeOrganization));
         }
         else
         {
