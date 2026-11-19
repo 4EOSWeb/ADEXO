@@ -8,6 +8,12 @@ The isolated WPF harness authenticated interactively through the Windows broker 
 authenticated through its cached session with T1 and T2 passing. Later broker attempts on the same host
 stopped producing usable interactive UI, and a clean reboot did not restore it.
 
+During Phase 3 live validation the broker behaved intermittently on the same host, in the same session,
+with the same configuration: some attempts surfaced no interactive surface at all and the bounded fallback
+ran to completion, while one attempt surfaced UI after roughly 15.6 seconds and authenticated through the
+broker, passing T1, T2, and correlation. Both outcomes are reproduced in this note deliberately, because
+they are the reason the fallback is bounded by observed UI rather than by elapsed time.
+
 The precise statement, which matters:
 
 > An available WAM broker does not guarantee usable interactive broker UI in every Windows host or
@@ -17,6 +23,11 @@ It is **not** accurate to say that a missing primary refresh token makes WAM fai
 harness authenticated through the broker on a device reporting `AzureAdPrt: NO`, which disproves that
 explanation. The broker was present and healthy throughout; what failed was the surfacing of its
 interactive surface.
+
+The intermittent success also shows why the window must not be an authentication deadline. An attempt that
+surfaces UI at 15.6 seconds is a legitimate broker sign-in and must not be abandoned; an attempt that
+surfaces nothing after 20 seconds is the condition the fallback exists for. The window measures absence of
+UI, never the operator's pace.
 
 ## Decision
 
@@ -78,11 +89,20 @@ document remains identifiers-only: the loader still refuses any property whose n
 ## How "UI surfaced" is decided
 
 `BrokerSurfacingProbe` consults `IBrokerSurfaceDetector` while the window is open. The production
-detector, `BrokerWindowDetector`, reports broker UI when a visible top-level window exists that is either
-owned by the ADEXO parent window the broker was given, or owned by the broker host process. Detection is
-best effort, and a missing signal is read as "not surfaced": that is the conservative direction for a
-fallback that exists precisely because a healthy broker can produce no UI. A late broker result cannot
-matter, because the attempt is retired before the browser starts.
+detector, `BrokerWindowDetector`, reports broker UI when either of these is true:
+
+- a visible top-level window owned by the ADEXO parent window the broker was given, and owned by a
+  **different** process (a window ADEXO itself owns is never broker UI, and counting it would suppress
+  the fallback); or
+- a visible window owned by one of the processes that host the account manager's surface.
+
+Detection is best effort, and a missing signal is read as "not surfaced": that is the conservative
+direction for a fallback that exists precisely because a healthy broker can produce no UI. A late broker
+result cannot matter, because the attempt is retired before the browser starts.
+
+Both directions were observed live. A false positive is the worse failure of the two, because it
+suppresses the fallback and leaves the operator waiting with no browser at all; an early live run did
+exactly that before ADEXO's own owned windows were excluded.
 
 ## Accepted trade-off
 
@@ -110,3 +130,20 @@ Mitigations:
 
 ADEXO should run non-elevated. The broker path requires a normal interactive session, and the product
 does not need elevation for any Phase 3 operation.
+
+### Sign-in can always be abandoned
+
+A browser window the operator closes leaves the identity library waiting indefinitely. The cloud section
+therefore runs each interactive attempt under its own cancellation token and exposes a **Cancel sign-in**
+command, enabled only while an attempt is in flight. Cancellation is an ordinary outcome: the section
+reports `Canceled`, states that Active Directory is unaffected, clears any stale cloud state from the
+tabs, and returns every command to a usable state. Without this, the only way out of a hung sign-in was
+to kill the process.
+
+### What the copied diagnostics must contain
+
+`Copy diagnostics` is the artefact an administrator sends to support, so it carries the preferred
+method, the actual method, the fallback reason, the elapsed broker time, the cloud correlation state, and
+the Exchange connection state. A session produced through the browser fallback must never be
+indistinguishable from a brokered one, because their security properties differ. It contains no token,
+bearer value, refresh token, or secret.
