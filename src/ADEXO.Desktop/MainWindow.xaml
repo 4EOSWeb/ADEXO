@@ -108,6 +108,10 @@
             <TextBlock Text="Read-only directory and cloud administration" Foreground="{StaticResource MutedBrush}" />
             <TextBlock Text="{Binding Product.StatusLine}" FontSize="15" FontWeight="SemiBold" Margin="0,10,0,0" />
             <TextBlock Text="{Binding Product.SectionMessage}" Foreground="{StaticResource WarningBrush}" Margin="0,2,0,0" />
+            <!-- The cloud session's own status. Without this binding the sign-in progress and the
+                 fallback notice never reached the screen, so an operator saw a browser appear with no
+                 explanation and a section that looked idle while it was waiting. -->
+            <TextBlock Text="{Binding Cloud.Message}" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0" />
             <Border Height="1" Background="{StaticResource RuleBrush}" Margin="0,12,0,0" />
         </StackPanel>
 
