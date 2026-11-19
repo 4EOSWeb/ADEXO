@@ -54,9 +54,16 @@ public sealed class BrokerWindowDetector : IBrokerSurfaceDetector
     {
         try
         {
+            var currentProcessId = (uint)Environment.ProcessId;
+
             foreach (var (processId, handle) in EnumerateVisibleWindows())
             {
-                if (ownerWindowHandle != IntPtr.Zero && GetWindow(handle, GwOwner) == ownerWindowHandle)
+                // An owned window counts only when it belongs to another process. ADEXO's own dialogs and
+                // popups are also owned by the main window, and counting them would report broker UI that
+                // does not exist, which suppresses the fallback and leaves the section waiting forever.
+                if (ownerWindowHandle != IntPtr.Zero
+                    && processId != currentProcessId
+                    && GetWindow(handle, GwOwner) == ownerWindowHandle)
                 {
                     return true;
                 }
