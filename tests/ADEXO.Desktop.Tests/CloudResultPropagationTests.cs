@@ -228,6 +228,59 @@ public sealed class CloudResultPropagationTests
         }
     }
 
+    [Fact]
+    public async Task A_second_sign_in_after_a_cancellation_can_start_and_complete()
+    {
+        // The loopback listener MSAL opens for a browser flow is closed when the flow is abandoned, so a
+        // retry must be able to open a fresh one rather than being blocked by the previous attempt.
+        var counter = new CountingHangingAuthenticationService();
+
+        var (model, _, _) = Build(authentication: counter);
+        await model.StartAsync(["LDAP://CN=User,OU=Lab,DC=example,DC=com", "user"]);
+
+        var first = model.Cloud.SignInAsync(IntPtr.Zero);
+        model.Cloud.CancelAttempt();
+        await first;
+        Assert.Equal(1, counter.SignInCalls);
+
+        var second = model.Cloud.SignInAsync(IntPtr.Zero);
+        await Task.Delay(150);
+        model.Cloud.CancelAttempt();
+        await second;
+
+        Assert.Equal(2, counter.SignInCalls);
+        Assert.Equal(CloudSectionState.Canceled, model.Cloud.State);
+        Assert.True(model.Cloud.SignInCommand.CanExecute(null));
+    }
+
+    /// <summary>Counts attempts so a retry after cancellation can be proven to have started.</summary>
+    private sealed class CountingHangingAuthenticationService : IMicrosoftAuthenticationService
+    {
+        public int SignInCalls { get; private set; }
+
+        public AuthenticationState State { get; set; } = AuthenticationState.Authenticating;
+
+        public AuthenticatedAccount? CurrentAccount { get; set; }
+
+        public Task<ProviderResult<AuthenticatedAccount>> TryAcquireSilentAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(ProviderResult<AuthenticatedAccount>.Failed(
+                OperationError.Create(FailureCategory.Authentication, "No account.")));
+
+        public async Task<ProviderResult<AuthenticatedAccount>> SignInAsync(IntPtr ownerWindowHandle, CancellationToken cancellationToken)
+        {
+            SignInCalls++;
+            await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        public Task SignOutAsync(CancellationToken cancellationToken)
+        {
+            CurrentAccount = null;
+            State = AuthenticationState.SignedOut;
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FixedClock : IClock
     {
         public DateTimeOffset UtcNow { get; } = new(2026, 11, 18, 19, 0, 0, TimeSpan.Zero);
